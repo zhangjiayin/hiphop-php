@@ -21,9 +21,10 @@
 #include <runtime/base/ini_setting.h>
 #include <runtime/ext/ext_network.h>
 #include <util/logger.h>
-using namespace HPHP;
 namespace HPHP {
-    class IpLocKey {
+///////////////////////////////////////////////////////////////////////////////
+
+   class IpLocKey {
     public:
         int64 s;
         int64 e;
@@ -146,4 +147,6 @@ namespace HPHP {
         }
     } s_iplocation_extension;
     ///////////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////////
 }
