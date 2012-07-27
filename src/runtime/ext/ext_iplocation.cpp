@@ -138,7 +138,11 @@ namespace HPHP {
             raise_warning(ip + " is not a validate ip");
             return String("");
         }
-        return IpLocMap::find(ipint.toInt64());
+        String ret = IpLocMap::find(ipint.toInt64());
+        if(ret.size()) {
+            return String("");
+        }
+        return ret;
     }
     static class iplocationExtension : public Extension {
     public:
