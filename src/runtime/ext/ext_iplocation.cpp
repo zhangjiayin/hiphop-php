@@ -139,7 +139,7 @@ namespace HPHP {
             return String("");
         }
         String ret = IpLocMap::find(ipint.toInt64());
-        if(ret == IpLocMap::lMap->end()) {
+        if(ret == null_string) {
             return String("");
         }
         return ret;
