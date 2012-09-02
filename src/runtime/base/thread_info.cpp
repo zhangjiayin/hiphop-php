@@ -17,6 +17,7 @@
 #include <runtime/base/hphp_system.h>
 #include <runtime/base/code_coverage.h>
 #include <runtime/base/memory/smart_allocator.h>
+#include <runtime/vm/translator/targetcache.h>
 #include <util/lock.h>
 #include <util/alloc.h>
 
@@ -53,6 +54,9 @@ ThreadInfo::ThreadInfo()
   m_pendingException = false;
   m_coverage = new CodeCoverage();
 
+  if (hhvm) {
+    VM::Transl::TargetCache::threadInit();
+  }
   onSessionInit();
 
   Lock lock(s_thread_info_mutex);
@@ -65,6 +69,9 @@ ThreadInfo::~ThreadInfo() {
   Lock lock(s_thread_info_mutex);
   s_thread_infos.erase(this);
   delete m_coverage;
+  if (hhvm) {
+    VM::Transl::TargetCache::threadExit();
+  }
 }
 
 bool ThreadInfo::valid(ThreadInfo* info) {
@@ -111,15 +118,22 @@ void ThreadInfo::clearPendingException() {
 
 void ThreadInfo::onSessionExit() {
   m_reqInjectionData.reset();
+  if (hhvm) {
+    VM::Transl::TargetCache::requestExit();
+  }
 }
 
 void RequestInjectionData::onSessionInit() {
+  if (hhvm) {
+    VM::Transl::TargetCache::requestInit();
+    cflagsPtr = VM::Transl::TargetCache::conditionFlagsPtr();
+  }
   reset();
   started = time(0);
 }
 
 void RequestInjectionData::reset() {
-  __sync_fetch_and_and(&conditionFlags, 0);
+  __sync_fetch_and_and(getConditionFlags(), 0);
   coverage = RuntimeOption::RecordCodeCoverage;
   debugger = false;
   debuggerIntr = false;
@@ -127,32 +141,37 @@ void RequestInjectionData::reset() {
 }
 
 void RequestInjectionData::setMemExceededFlag() {
-  __sync_fetch_and_or(&conditionFlags, RequestInjectionData::MemExceededFlag);
+  __sync_fetch_and_or(getConditionFlags(),
+                      RequestInjectionData::MemExceededFlag);
 }
 
 void RequestInjectionData::setTimedOutFlag() {
-  __sync_fetch_and_or(&conditionFlags, RequestInjectionData::TimedOutFlag);
+  __sync_fetch_and_or(getConditionFlags(),
+                      RequestInjectionData::TimedOutFlag);
 }
 
 void RequestInjectionData::setSignaledFlag() {
-  __sync_fetch_and_or(&conditionFlags, RequestInjectionData::SignaledFlag);
+  __sync_fetch_and_or(getConditionFlags(),
+                      RequestInjectionData::SignaledFlag);
 }
 
 void RequestInjectionData::setEventHookFlag() {
-  __sync_fetch_and_or(&conditionFlags, RequestInjectionData::EventHookFlag);
+  __sync_fetch_and_or(getConditionFlags(),
+                      RequestInjectionData::EventHookFlag);
 }
 
 void RequestInjectionData::clearEventHookFlag() {
-  __sync_fetch_and_and(&conditionFlags, ~RequestInjectionData::EventHookFlag);
+  __sync_fetch_and_and(getConditionFlags(),
+                       ~RequestInjectionData::EventHookFlag);
 }
 
 ssize_t RequestInjectionData::fetchAndClearFlags() {
   ssize_t flags;
   for (;;) {
-    flags = conditionFlags;
+    flags = atomic_acquire_load(getConditionFlags());
     const ssize_t newFlags =
       hhvm ? (flags & RequestInjectionData::EventHookFlag) : 0;
-    if (__sync_bool_compare_and_swap(&conditionFlags, flags, newFlags)) {
+    if (__sync_bool_compare_and_swap(getConditionFlags(), flags, newFlags)) {
       break;
     }
   }

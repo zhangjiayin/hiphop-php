@@ -1,10 +1,25 @@
+/*
+   +----------------------------------------------------------------------+
+   | HipHop for PHP                                                       |
+   +----------------------------------------------------------------------+
+   | Copyright (c) 2010- Facebook, Inc. (http://www.facebook.com)         |
+   | Copyright (c) 1997-2010 The PHP Group                                |
+   +----------------------------------------------------------------------+
+   | This source file is subject to version 3.01 of the PHP license,      |
+   | that is bundled with this package in the file LICENSE, and is        |
+   | available through the world-wide-web at the following url:           |
+   | http://www.php.net/license/3_01.txt                                  |
+   | If you did not receive a copy of the PHP license and are unable to   |
+   | obtain it through the world-wide-web, please send a note to          |
+   | license@php.net so we can mail you a copy immediately.               |
+   +----------------------------------------------------------------------+
+*/
 #include <runtime/ext_hhvm/ext_hhvm.h>
 #include <runtime/base/builtin_functions.h>
 #include <runtime/base/array/array_init.h>
 #include <runtime/ext/ext.h>
 #include <runtime/vm/class.h>
 #include <runtime/vm/runtime.h>
-#include <runtime/vm/exception_gate.h>
 #include <exception>
 
 namespace HPHP {
@@ -20,7 +35,6 @@ _rv => rdi
 Value* fh_get_defined_functions(Value* _rv) asm("_ZN4HPHP23f_get_defined_functionsEv");
 
 TypedValue* fg_get_defined_functions(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -41,7 +55,7 @@ TypedValue* fg_get_defined_functions(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -67,7 +81,6 @@ TypedValue * fg1_function_exists(TypedValue* rv, HPHP::VM::ActRec* ar, long long
 }
 
 TypedValue* fg_function_exists(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -94,7 +107,7 @@ TypedValue* fg_function_exists(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -123,7 +136,6 @@ TypedValue * fg1_is_callable(TypedValue* rv, HPHP::VM::ActRec* ar, long long cou
 }
 
 TypedValue* fg_is_callable(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -151,7 +163,7 @@ TypedValue* fg_is_callable(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -170,17 +182,15 @@ _argv => rcx
 TypedValue* fh_call_user_func(TypedValue* _rv, long long _argc, TypedValue* function, Value* _argv) asm("_ZN4HPHP16f_call_user_funcEiRKNS_7VariantERKNS_5ArrayE");
 
 TypedValue* fg_call_user_func(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
     if (count >= 1LL) {
       Array extraArgs;
       {
-        HPHP::VM::ExtraArgs* ea UNUSED = ar->getExtraArgs();
         ArrayInit ai(count-1, false);
         for (long long i = 1; i < count; ++i) {
-          TypedValue* extraArg = ea->getExtraArg(i-1);
+          TypedValue* extraArg = ar->getExtraArg(i-1);
           if (tvIsStronglyBound(extraArg)) {
             ai.setRef(i-1, tvAsVariant(extraArg));
           } else {
@@ -203,7 +213,7 @@ TypedValue* fg_call_user_func(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -232,7 +242,6 @@ TypedValue * fg1_call_user_func_array_async(TypedValue* rv, HPHP::VM::ActRec* ar
 }
 
 TypedValue* fg_call_user_func_array_async(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -260,7 +269,7 @@ TypedValue* fg_call_user_func_array_async(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -279,7 +288,6 @@ _argv => rcx
 Value* fh_call_user_func_async(Value* _rv, long long _argc, TypedValue* function, Value* _argv) asm("_ZN4HPHP22f_call_user_func_asyncEiRKNS_7VariantERKNS_5ArrayE");
 
 TypedValue* fg_call_user_func_async(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -288,10 +296,9 @@ TypedValue* fg_call_user_func_async(HPHP::VM::ActRec *ar) {
       rv.m_type = KindOfObject;
       Array extraArgs;
       {
-        HPHP::VM::ExtraArgs* ea UNUSED = ar->getExtraArgs();
         ArrayInit ai(count-1, false);
         for (long long i = 1; i < count; ++i) {
-          TypedValue* extraArg = ea->getExtraArg(i-1);
+          TypedValue* extraArg = ar->getExtraArg(i-1);
           if (tvIsStronglyBound(extraArg)) {
             ai.setRef(i-1, tvAsVariant(extraArg));
           } else {
@@ -314,7 +321,7 @@ TypedValue* fg_call_user_func_async(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -341,7 +348,6 @@ TypedValue * fg1_check_user_func_async(TypedValue* rv, HPHP::VM::ActRec* ar, lon
 }
 
 TypedValue* fg_check_user_func_async(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -367,7 +373,7 @@ TypedValue* fg_check_user_func_async(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -407,7 +413,6 @@ TypedValue * fg1_end_user_func_async(TypedValue* rv, HPHP::VM::ActRec* ar, long 
 }
 
 TypedValue* fg_end_user_func_async(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -434,7 +439,7 @@ TypedValue* fg_end_user_func_async(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -462,7 +467,6 @@ TypedValue * fg1_call_user_func_serialized(TypedValue* rv, HPHP::VM::ActRec* ar,
 }
 
 TypedValue* fg_call_user_func_serialized(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -490,7 +494,7 @@ TypedValue* fg_call_user_func_serialized(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -535,7 +539,6 @@ TypedValue * fg1_call_user_func_array_rpc(TypedValue* rv, HPHP::VM::ActRec* ar, 
 }
 
 TypedValue* fg_call_user_func_array_rpc(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -561,7 +564,7 @@ TypedValue* fg_call_user_func_array_rpc(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 6);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -600,10 +603,9 @@ TypedValue * fg1_call_user_func_rpc(TypedValue* rv, HPHP::VM::ActRec* ar, long l
   }
   Array extraArgs;
   {
-    HPHP::VM::ExtraArgs* ea UNUSED = ar->getExtraArgs();
     ArrayInit ai(count-5, false);
     for (long long i = 5; i < count; ++i) {
-      TypedValue* extraArg = ea->getExtraArg(i-5);
+      TypedValue* extraArg = ar->getExtraArg(i-5);
       if (tvIsStronglyBound(extraArg)) {
         ai.setRef(i-5, tvAsVariant(extraArg));
       } else {
@@ -618,7 +620,6 @@ TypedValue * fg1_call_user_func_rpc(TypedValue* rv, HPHP::VM::ActRec* ar, long l
 }
 
 TypedValue* fg_call_user_func_rpc(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -626,10 +627,9 @@ TypedValue* fg_call_user_func_rpc(HPHP::VM::ActRec *ar) {
       if ((args-3)->m_type == KindOfInt64 && IS_STRING_TYPE((args-2)->m_type) && (args-1)->m_type == KindOfInt64 && IS_STRING_TYPE((args-0)->m_type)) {
         Array extraArgs;
         {
-          HPHP::VM::ExtraArgs* ea UNUSED = ar->getExtraArgs();
           ArrayInit ai(count-5, false);
           for (long long i = 5; i < count; ++i) {
-            TypedValue* extraArg = ea->getExtraArg(i-5);
+            TypedValue* extraArg = ar->getExtraArg(i-5);
             if (tvIsStronglyBound(extraArg)) {
               ai.setRef(i-5, tvAsVariant(extraArg));
             } else {
@@ -658,7 +658,7 @@ TypedValue* fg_call_user_func_rpc(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 5);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -685,7 +685,6 @@ TypedValue * fg1_forward_static_call_array(TypedValue* rv, HPHP::VM::ActRec* ar,
 }
 
 TypedValue* fg_forward_static_call_array(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -711,7 +710,7 @@ TypedValue* fg_forward_static_call_array(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -730,17 +729,15 @@ _argv => rcx
 TypedValue* fh_forward_static_call(TypedValue* _rv, long long _argc, TypedValue* function, Value* _argv) asm("_ZN4HPHP21f_forward_static_callEiRKNS_7VariantERKNS_5ArrayE");
 
 TypedValue* fg_forward_static_call(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
     if (count >= 1LL) {
       Array extraArgs;
       {
-        HPHP::VM::ExtraArgs* ea UNUSED = ar->getExtraArgs();
         ArrayInit ai(count-1, false);
         for (long long i = 1; i < count; ++i) {
-          TypedValue* extraArg = ea->getExtraArg(i-1);
+          TypedValue* extraArg = ar->getExtraArg(i-1);
           if (tvIsStronglyBound(extraArg)) {
             ai.setRef(i-1, tvAsVariant(extraArg));
           } else {
@@ -763,7 +760,7 @@ TypedValue* fg_forward_static_call(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -779,7 +776,6 @@ _rv => rdi
 TypedValue* fh_get_called_class(TypedValue* _rv) asm("_ZN4HPHP18f_get_called_classEv");
 
 TypedValue* fg_get_called_class(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -798,7 +794,7 @@ TypedValue* fg_get_called_class(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -832,7 +828,6 @@ TypedValue * fg1_create_function(TypedValue* rv, HPHP::VM::ActRec* ar, long long
 }
 
 TypedValue* fg_create_function(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -860,7 +855,7 @@ TypedValue* fg_create_function(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -886,7 +881,6 @@ TypedValue * fg1_func_get_arg(TypedValue* rv, HPHP::VM::ActRec* ar, long long co
 }
 
 TypedValue* fg_func_get_arg(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -912,7 +906,7 @@ TypedValue* fg_func_get_arg(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -928,7 +922,6 @@ _rv => rdi
 Value* fh_func_get_args(Value* _rv) asm("_ZN4HPHP15f_func_get_argsEv");
 
 TypedValue* fg_func_get_args(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -949,7 +942,7 @@ TypedValue* fg_func_get_args(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -964,7 +957,6 @@ _ZN4HPHP15f_func_num_argsEv
 long long fh_func_num_args() asm("_ZN4HPHP15f_func_num_argsEv");
 
 TypedValue* fg_func_num_args(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -984,7 +976,7 @@ TypedValue* fg_func_num_args(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1001,7 +993,6 @@ _argv => rdx
 void fh_register_postsend_function(long long _argc, TypedValue* function, Value* _argv) asm("_ZN4HPHP28f_register_postsend_functionEiRKNS_7VariantERKNS_5ArrayE");
 
 TypedValue* fg_register_postsend_function(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1011,10 +1002,9 @@ TypedValue* fg_register_postsend_function(HPHP::VM::ActRec *ar) {
       rv.m_type = KindOfNull;
       Array extraArgs;
       {
-        HPHP::VM::ExtraArgs* ea UNUSED = ar->getExtraArgs();
         ArrayInit ai(count-1, false);
         for (long long i = 1; i < count; ++i) {
-          TypedValue* extraArg = ea->getExtraArg(i-1);
+          TypedValue* extraArg = ar->getExtraArg(i-1);
           if (tvIsStronglyBound(extraArg)) {
             ai.setRef(i-1, tvAsVariant(extraArg));
           } else {
@@ -1036,7 +1026,7 @@ TypedValue* fg_register_postsend_function(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1053,7 +1043,6 @@ _argv => rdx
 void fh_register_shutdown_function(long long _argc, TypedValue* function, Value* _argv) asm("_ZN4HPHP28f_register_shutdown_functionEiRKNS_7VariantERKNS_5ArrayE");
 
 TypedValue* fg_register_shutdown_function(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1063,10 +1052,9 @@ TypedValue* fg_register_shutdown_function(HPHP::VM::ActRec *ar) {
       rv.m_type = KindOfNull;
       Array extraArgs;
       {
-        HPHP::VM::ExtraArgs* ea UNUSED = ar->getExtraArgs();
         ArrayInit ai(count-1, false);
         for (long long i = 1; i < count; ++i) {
-          TypedValue* extraArg = ea->getExtraArg(i-1);
+          TypedValue* extraArg = ar->getExtraArg(i-1);
           if (tvIsStronglyBound(extraArg)) {
             ai.setRef(i-1, tvAsVariant(extraArg));
           } else {
@@ -1088,7 +1076,7 @@ TypedValue* fg_register_shutdown_function(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1105,7 +1093,6 @@ _argv => rdx
 void fh_register_cleanup_function(long long _argc, TypedValue* function, Value* _argv) asm("_ZN4HPHP27f_register_cleanup_functionEiRKNS_7VariantERKNS_5ArrayE");
 
 TypedValue* fg_register_cleanup_function(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1115,10 +1102,9 @@ TypedValue* fg_register_cleanup_function(HPHP::VM::ActRec *ar) {
       rv.m_type = KindOfNull;
       Array extraArgs;
       {
-        HPHP::VM::ExtraArgs* ea UNUSED = ar->getExtraArgs();
         ArrayInit ai(count-1, false);
         for (long long i = 1; i < count; ++i) {
-          TypedValue* extraArg = ea->getExtraArg(i-1);
+          TypedValue* extraArg = ar->getExtraArg(i-1);
           if (tvIsStronglyBound(extraArg)) {
             ai.setRef(i-1, tvAsVariant(extraArg));
           } else {
@@ -1140,7 +1126,7 @@ TypedValue* fg_register_cleanup_function(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1158,7 +1144,6 @@ _argv => rdx
 bool fh_register_tick_function(long long _argc, TypedValue* function, Value* _argv) asm("_ZN4HPHP24f_register_tick_functionEiRKNS_7VariantERKNS_5ArrayE");
 
 TypedValue* fg_register_tick_function(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1167,10 +1152,9 @@ TypedValue* fg_register_tick_function(HPHP::VM::ActRec *ar) {
       rv.m_type = KindOfBoolean;
       Array extraArgs;
       {
-        HPHP::VM::ExtraArgs* ea UNUSED = ar->getExtraArgs();
         ArrayInit ai(count-1, false);
         for (long long i = 1; i < count; ++i) {
-          TypedValue* extraArg = ea->getExtraArg(i-1);
+          TypedValue* extraArg = ar->getExtraArg(i-1);
           if (tvIsStronglyBound(extraArg)) {
             ai.setRef(i-1, tvAsVariant(extraArg));
           } else {
@@ -1192,7 +1176,7 @@ TypedValue* fg_register_tick_function(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1207,7 +1191,6 @@ function_name => rdi
 void fh_unregister_tick_function(TypedValue* function_name) asm("_ZN4HPHP26f_unregister_tick_functionERKNS_7VariantE");
 
 TypedValue* fg_unregister_tick_function(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1228,7 +1211,7 @@ TypedValue* fg_unregister_tick_function(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 

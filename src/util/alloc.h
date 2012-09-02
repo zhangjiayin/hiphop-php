@@ -25,8 +25,15 @@
 #include <google/malloc_extension.h>
 #endif
 
-#ifndef NO_JEMALLOC
-#include <jemalloc/jemalloc.h>
+#ifdef NO_JEMALLOC
+# ifdef __FreeBSD__
+#  include "stdlib.h"
+#  include "malloc_np.h"
+# else
+#  include "malloc.h"
+# endif
+#else
+# include <jemalloc/jemalloc.h>
 #endif
 
 extern "C" {

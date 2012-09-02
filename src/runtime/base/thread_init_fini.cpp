@@ -26,7 +26,6 @@
 #include <util/alloc.h>
 #include <util/hardware_counter.h>
 #include <runtime/ext/ext_icu.h>
-#include <runtime/eval/runtime/variable_environment.h>
 #include <runtime/base/intercept.h>
 
 namespace HPHP {
@@ -45,7 +44,6 @@ void init_thread_locals(void *arg /* = NULL */) {
   ObjectData::GetMaxId();
   ResourceData::GetMaxResourceId();
   ServerStats::GetLogger();
-  preg_get_pcre_cache();
   zend_get_bigint_data();
   zend_get_rand_data();
   get_server_note();
@@ -53,15 +51,13 @@ void init_thread_locals(void *arg /* = NULL */) {
   Sweepable::GetSweepData();
   MemoryManager::TheMemoryManager().getCheck();
   InitAllocatorThreadLocal();
+  RefData::AllocatorType::getCheck();
   get_global_variables_check();
   ThreadInfo::s_threadInfo.getCheck();
   g_context.getCheck();
   icu_get_checks();
   s_hasRenamedFunction.getCheck();
   Util::HardwareCounter::s_counter.getCheck();
-  if (has_eval_support) {
-    Eval::VariableEnvironment::InitTempStack();
-  }
   for (InitFiniNode *in = extra_init; in; in = in->next) {
     in->func();
   }

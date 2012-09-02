@@ -328,12 +328,17 @@ Variant f_strrchr(CStrRef haystack, CVarRef needle) {
   return haystack.substr(ret.toInt32());
 }
 
-Variant f_strstr(CStrRef haystack, CVarRef needle) {
+Variant f_strstr(CStrRef haystack, CVarRef needle,
+                 bool before_needle /* =false */) {
   Variant ret = f_strpos(haystack, needle);
   if (same(ret, false)) {
     return false;
   }
-  return haystack.substr(ret.toInt32());
+  if (before_needle) {
+    return haystack.substr(0, ret.toInt32());
+  } else {
+    return haystack.substr(ret.toInt32());
+  }
 }
 
 Variant f_stristr(CStrRef haystack, CVarRef needle) {
@@ -621,7 +626,7 @@ Variant f_str_word_count(CStrRef str, int64 format /* = 0 */,
   if (!format) {
     return word_count;
   }
-  return ret;
+  return ret.isNull() ? Array::Create() : ret;
 }
 
 Variant f_strtr(CStrRef str, CVarRef from, CVarRef to /* = null_variant */) {

@@ -298,7 +298,7 @@ Variant invokeImpl(void *extra, CArrRef params) {
 CallInfoWithConstructor invokeImplCallInfo((void*)invokeImpl, NULL, 0,
                                            CallInfo::VarArgs, 0);
 bool get_call_info(const CallInfo *&ci, void *&extra, const char *s,
-                   int64 hash /* = -1 */) {
+                   strhash_t hash /* = -1 */) {
   if (!strcasecmp(s, "nontest")) {
     extra = 0;
     ci = 0;
@@ -310,7 +310,7 @@ bool get_call_info(const CallInfo *&ci, void *&extra, const char *s,
 }
 
 bool get_call_info_no_eval(const CallInfo *&ci, void *&extra, const char *s,
-                           int64 hash /* = -1 */) {
+                           strhash_t hash /* = -1 */) {
   return get_call_info(ci, extra, s, hash);
 }
 
@@ -376,12 +376,16 @@ Variant *get_static_property_lv(CStrRef s, const char *prop) {
   return NULL;
 }
 
-bool get_call_info_static_method(MethodCallPackage &info) {
-  return NULL;
+bool get_call_info_static_method(MethodCallPackage &mcp) {
+  StringData *s ATTRIBUTE_UNUSED (mcp.rootCls);
+  const ObjectStaticCallbacks *cwo = get_object_static_callbacks(s);
+  if (LIKELY(cwo != 0)) return ObjectStaticCallbacks::GetCallInfo(cwo, mcp, -1);
+  if (mcp.m_fatal) throw_missing_class(s->data());
+  return false;
 }
 
 const ObjectStaticCallbacks * get_object_static_callbacks(CStrRef s) {
-  return NULL;
+  return get_builtin_object_static_callbacks(s);;
 }
 
 Array get_global_state() { return Array(); }

@@ -161,7 +161,7 @@ bool FuncChecker::checkOffsets() {
   checkRegion("func", base, past, "unit", 0, unit()->bclen(), false);
   // find instruction boundaries and make sure no branches escape
   SectionMap sections;
-  for (StdRange<FixedVector<EHEnt> > i(m_func->ehtab()); !i.empty(); ) {
+  for (Range<FixedVector<EHEnt> > i(m_func->ehtab()); !i.empty(); ) {
     const EHEnt& eh = i.popFront();
     if (eh.m_ehtype == EHEnt::EHType_Fault) {
       ok &= checkOffset("fault funclet", eh.m_fault, "func bytecode", base,
@@ -173,7 +173,7 @@ bool FuncChecker::checkOffsets() {
   sections[base] = funclets; // primary body
   // Get instruction boundaries and check branches within primary body
   // and each faultlet.
-  for (StdRange<SectionMap> i(sections); !i.empty(); ) {
+  for (Range<SectionMap> i(sections); !i.empty(); ) {
     Offset section_base = i.popFront().first;
     Offset section_past = i.empty() ? past : i.front().first;
     sections[section_base] = section_past;
@@ -182,7 +182,7 @@ bool FuncChecker::checkOffsets() {
                        section_base, section_past);
   }
   // DV entry points must be in the primary function body
-  for (StdRange<vector<Func::ParamInfo> > p(m_func->params()); !p.empty(); ) {
+  for (Range<vector<Func::ParamInfo> > p(m_func->params()); !p.empty(); ) {
     const Func::ParamInfo& param = p.popFront();
     if (param.hasDefaultValue()) {
       ok &= checkOffset("dv-entry", param.funcletOff(), "func body", base,
@@ -191,7 +191,7 @@ bool FuncChecker::checkOffsets() {
   }
   // Every FPI region must be contained within one section, either the
   // primary body or one fault funclet
-  for (StdRange<FixedVector<FPIEnt> > i(m_func->fpitab()); !i.empty(); ) {
+  for (Range<FixedVector<FPIEnt> > i(m_func->fpitab()); !i.empty(); ) {
     const FPIEnt& fpi = i.popFront();
     Offset fpi_base = fpiBase(fpi, bc);
     Offset fpi_past = fpiPast(fpi, bc);
@@ -207,11 +207,11 @@ bool FuncChecker::checkOffsets() {
     }
   }
   // check EH regions and targets
-  for (StdRange<FixedVector<EHEnt> > i(m_func->ehtab()); !i.empty(); ) {
+  for (Range<FixedVector<EHEnt> > i(m_func->ehtab()); !i.empty(); ) {
     const EHEnt& eh = i.popFront();
     checkRegion("EH", eh.m_base, eh.m_past, "func body", base, funclets);
     if (eh.m_ehtype == EHEnt::EHType_Catch) {
-      for (StdRange<vector<CatchEnt> > c(eh.m_catches); !c.empty(); ) {
+      for (Range<vector<CatchEnt> > c(eh.m_catches); !c.empty(); ) {
         ok &= checkOffset("catch", c.popFront().second, "func body", base,
                           funclets);
       }
@@ -240,6 +240,15 @@ bool FuncChecker::checkSection(bool is_main, const char* name, Offset base,
     m_instrs.set(offset(pc) - m_func->base());
     if (Op(*pc) == OpSwitch ||
         instrJumpTarget(bc, offset(pc)) != InvalidAbsoluteOffset) {
+      if (Op(*pc) == OpSwitch) {
+        int64 switchBase = getImm(pc, 1).u_I64A;
+        int32_t len = getImmVector(pc).size();
+        int64 limit = base + len - 2;
+        if (limit < switchBase) {
+          printf("Verify: Overflow in Switch bounds [%d:%d]\n",
+                 base, past);
+        }
+      }
       branches.push_back(pc);
     }
     if (i.empty()) {
@@ -265,11 +274,11 @@ bool FuncChecker::checkSection(bool is_main, const char* name, Offset base,
   }
   // Check each branch target lands on a valid instruction boundary
   // within this region.
-  for (StdRange<BranchList> i(branches); !i.empty();) {
+  for (Range<BranchList> i(branches); !i.empty();) {
     PC branch = i.popFront();
     if (Op(*branch) == OpSwitch) {
       ImmVector vec = getImmVector(branch);
-      const int* v = vec.vec32();
+      const Offset* v = vec.vec32();
       for (int i = 0, n = vec.size(); i < n; i++) {
         Offset target = offset(branch + v[i]);
         ok &= checkOffset("switch target", target, name, base, past);
@@ -418,7 +427,7 @@ bool FuncChecker::checkImmediates(const char* name, const Opcode* instr) {
       }
       break;
     }
-    case ILA: { // vec of int32 for Switch
+    case BLA: { // vec of int32 for Switch
       int len = *(int*)pc;
       if (len < 1) {
         printf("Verify: invalid length of jump table %d at Offset %d\n",
@@ -827,7 +836,7 @@ bool FuncChecker::checkFlow() {
     ok &= checkSuccEdges(b, &cur);
   }
   // Make sure eval stack is empty at start of each try region
-  for (StdRange<FixedVector<EHEnt> > i(m_func->ehtab()); !i.empty(); ) {
+  for (Range<FixedVector<EHEnt> > i(m_func->ehtab()); !i.empty(); ) {
     const EHEnt& handler = i.popFront();
     if (handler.m_ehtype == EHEnt::EHType_Catch) {
       ok &= checkEmptyStack(handler, builder.at(handler.m_base));

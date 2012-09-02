@@ -1076,7 +1076,7 @@ TypePtr SimpleFunctionCall::inferAndCheck(AnalysisResultPtr ar, TypePtr type,
     if (!cls) {
       if (m_params) {
         m_params->inferAndCheck(ar, Type::Some, false);
-        m_params->markParams(canInvokeFewArgs());
+        markRefParams(FunctionScopePtr(), m_name, canInvokeFewArgs());
       }
       return checkTypesImpl(ar, type, Type::Variant, coerce);
     }
@@ -1553,7 +1553,8 @@ bool SimpleFunctionCall::preOutputCPP(CodeGenerator &cg, AnalysisResultPtr ar,
     }
   }
   if (needHash) {
-    cg_printf(", 0x%016llXLL);\n", hash_string_i(m_name.data(), m_name.size()));
+    cg_printf(", " STRHASH_FMT ");\n",
+              hash_string_i(m_name.data(), m_name.size()));
   }
   if (m_class || !m_className.empty()) {
     cg_printf("cit%d = mcp%d.ci;\n", m_ciTemp, m_ciTemp);

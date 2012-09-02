@@ -269,7 +269,7 @@ bool Debugger::isThreadDebugging(int64 tid) {
 
 void Debugger::registerThread() {
   ThreadInfo* ti = ThreadInfo::s_threadInfo.getNoCheck();
-  int64 tid = Process::GetThreadId();
+  int64 tid = (int64)Process::GetThreadId();
   ThreadInfoMap::accessor acc;
   m_threadInfos.insert(acc, tid);
   acc->second = ti;
@@ -390,7 +390,7 @@ void Debugger::retireDummySandboxThread(DummySandbox* toRetire) {
 }
 
 void Debugger::cleanupDummySandboxThreads() {
-  DummySandbox* ptr;
+  DummySandbox* ptr = NULL;
   while (m_cleanupDummySandboxQ.try_pop(ptr)) {
     ptr->notify();
     try {
@@ -417,7 +417,7 @@ void Debugger::removeProxy(DebuggerProxyPtr proxy) {
   m_proxyMap.erase(dummySid);
   // Clear the debugger blacklist PC upon last detach if JIT is used
   if (RuntimeOption::EvalJit && countConnectedProxy() == 0) {
-    VM::Transl::transl->clearDbgBL();
+    VM::Transl::Translator::Get()->clearDbgBL();
   }
 }
 

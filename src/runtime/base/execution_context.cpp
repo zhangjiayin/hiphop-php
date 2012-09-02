@@ -14,6 +14,9 @@
    +----------------------------------------------------------------------+
 */
 
+#define __STDC_LIMIT_MACROS
+#include <stdint.h>
+
 #include <runtime/base/execution_context.h>
 #include <runtime/base/complex_types.h>
 #include <runtime/base/type_conversions.h>
@@ -59,7 +62,6 @@ BaseExecutionContext::BaseExecutionContext() :
     NEAR_FIELD_INIT
 #endif
     m_transport(NULL),
-    m_maxMemory(RuntimeOption::RequestMemoryMaxBytes),
     m_maxTime(RuntimeOption::RequestTimeoutSeconds),
     m_cwd(Process::CurrentWorkingDirectory),
     m_out(NULL), m_implicitFlush(false), m_protectedLevel(0),
@@ -69,7 +71,7 @@ BaseExecutionContext::BaseExecutionContext() :
     m_lastErrorNum(0), m_logErrors(false), m_throwAllErrors(false),
     m_vhost(NULL) {
 
-  MemoryManager::TheMemoryManager()->getStats().maxBytes = m_maxMemory;
+  setRequestMemoryMaxBytes(RuntimeOption::RequestMemoryMaxBytes);
   m_include_paths = Array::Create();
   for (unsigned int i = 0; i < RuntimeOption::IncludeSearchPaths.size(); ++i) {
     m_include_paths.append(String(RuntimeOption::IncludeSearchPaths[i]));
@@ -77,10 +79,11 @@ BaseExecutionContext::BaseExecutionContext() :
 }
 
 VMExecutionContext::VMExecutionContext() :
+    m_constants(0),
 #ifndef HHVM
     NEAR_FIELD_INIT
 #endif
-    m_halted(false), m_lambdaCounter(0), m_nesting(0),
+    m_lambdaCounter(0), m_nesting(0),
     m_injTables(NULL), m_breakPointFilter(NULL), m_lastLocFilter(NULL),
     m_interpreting(false), m_dbgNoBreak(false),
     m_coverPrevLine(-1), m_coverPrevUnit(NULL),
@@ -97,7 +100,6 @@ VMExecutionContext::VMExecutionContext() :
   CT_ASSERT(offsetof(ExecutionContext, m_currentThreadIdx) <= 0xff);
 #endif
 
-  m_transl = VM::Transl::Translator::Get();
   {
     Lock lock(s_threadIdxLock);
     pid_t tid = Process::GetThreadPid();
@@ -121,7 +123,6 @@ BaseExecutionContext::~BaseExecutionContext() {
 }
 
 VMExecutionContext::~VMExecutionContext() {
-  syncGdbState();
   // Discard any ConstInfo objects that were created to support reflection.
   for (ConstInfoMap::const_iterator it = m_constInfo.begin();
        it != m_constInfo.end(); ++it) {
@@ -144,12 +145,6 @@ VMExecutionContext::~VMExecutionContext() {
   for (EvaledUnitsVec::iterator it = m_createdFuncs.begin();
        it != m_createdFuncs.end(); ++it) {
     delete *it;
-  }
-  // delete global varEnv
-  if (!m_varEnvs.empty()) {
-    // can only have one left
-    ASSERT(m_varEnvs.front() == m_varEnvs.back());
-    VM::VarEnv::destroy(m_varEnvs.front());
   }
 
   delete m_eventHook;
@@ -198,6 +193,15 @@ String BaseExecutionContext::getMimeType() const {
   return mimetype;
 }
 
+std::string BaseExecutionContext::getRequestUrl(size_t szLimit) {
+  Transport* t = getTransport();
+  std::string ret = t ? t->getUrl() : "";
+  if (szLimit != std::string::npos) {
+    ret = ret.substr(0, szLimit);
+  }
+  return ret;
+}
+
 void BaseExecutionContext::setContentType(CStrRef mimetype, CStrRef charset) {
   if (m_transport) {
     String contentType = mimetype;
@@ -210,6 +214,9 @@ void BaseExecutionContext::setContentType(CStrRef mimetype, CStrRef charset) {
 }
 
 void BaseExecutionContext::setRequestMemoryMaxBytes(int64 max) {
+  if (max <= 0) {
+    max = INT64_MAX;
+  }
   m_maxMemory = max;
   MemoryManager::TheMemoryManager()->getStats().maxBytes = m_maxMemory;
 }
@@ -647,7 +654,7 @@ void BaseExecutionContext::handleError(const std::string &msg,
       }
     }
 
-    Logger::Log(true, prefix.c_str(), ee, file, line);
+    Logger::Log(Logger::LogError, prefix.c_str(), ee, file, line);
   }
 }
 
@@ -718,7 +725,7 @@ bool BaseExecutionContext::onFatalError(const Exception &e) {
     }
   }
   if (RuntimeOption::AlwaysLogUnhandledExceptions) {
-    Logger::Log(true, "HipHop Fatal error: ", e, file, line);
+    Logger::Log(Logger::LogError, "HipHop Fatal error: ", e, file, line);
   }
   bool handled = false;
   if (RuntimeOption::CallUserHandlerOnFatals) {
@@ -726,7 +733,7 @@ bool BaseExecutionContext::onFatalError(const Exception &e) {
     handled = callUserErrorHandler(e, errnum, true);
   }
   if (!handled && !RuntimeOption::AlwaysLogUnhandledExceptions) {
-    Logger::Log(true, "HipHop Fatal error: ", e, file, line);
+    Logger::Log(Logger::LogError, "HipHop Fatal error: ", e, file, line);
   }
   return handled;
 }

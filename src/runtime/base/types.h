@@ -45,6 +45,7 @@ class Object;
 template<typename T> class SmartObject;
 class Variant;
 class VarNR;
+class RefData;
 typedef Variant Numeric;
 typedef Variant Primitive;
 typedef Variant PlusOperand;
@@ -76,7 +77,7 @@ extern const Array null_array;
  * want to use hphp (if it's not, you'll hit compile-time assertions
  * in the relevant classes and may have to fiddle with this).
  */
-#define FAST_REFCOUNT_OFFSET (sizeof(void*))
+const size_t FAST_REFCOUNT_OFFSET = sizeof(void*);
 
 /**
  * These are underlying data structures for the above complex data types. Since
@@ -134,10 +135,13 @@ enum DataType {
   // Values below zero are not PHP values, but runtime-internal.
   KindOfClass     = -2,
   KindOfInvalid   = -1,
+  KindOfUnknown   = KindOfInvalid,
 
   /**
-   * Beware if you change the order, as we may have a few type checks in the
-   * code that depend on the order.
+   * Beware if you change the order, as we may have a few type checks
+   * in the code that depend on the order.  Also beware of adding to
+   * the number of bits needed to represent this.  (Known dependency
+   * in unwind-x64.h.)
    */
   KindOfUninit  = 0,
   KindOfNull    = 1,
@@ -148,9 +152,10 @@ enum DataType {
   KindOfString  = 7,
   KindOfArray   = 8,
   KindOfObject  = 9,
-  KindOfVariant = 10,
+  KindOfRef     = 10,
+  KindOfIndirect = 11,
 
-  MaxNumDataTypes = 11, // marker, not a valid type
+  MaxNumDataTypes = 12, // marker, not a valid type
 
   MaxDataType   = 0x7fffffff // Allow KindOf* > 11 in HphpArray.
 };
@@ -176,6 +181,16 @@ inline int getDataTypeIndex(DataType t) {
 #define IS_ARRAY_TYPE(t) ((t) == KindOfArray)
 #define IS_BOOL_TYPE(t) ((t) == KindOfBoolean)
 #define IS_DOUBLE_TYPE(t) ((t) == KindOfDouble)
+
+namespace Collection {
+enum Type {
+  InvalidType = 0,
+  VectorType = 1,
+  MapType = 2,
+  StableMapType = 3,
+  MaxNumTypes = 4
+};
+}
 
 /**
  * Some of these typedefs are for platform independency, including "int64".
@@ -245,9 +260,23 @@ public:
       debuggerIntr(false), coverage(false) {
   }
 
-  volatile ssize_t conditionFlags; // condition flags can indicate if a thread
-                                   // has exceeded the memory limit, timed out,
-                                   // or received a signal
+  inline volatile ssize_t* getConditionFlags() {
+    if (hhvm) {
+      ASSERT(cflagsPtr);
+      return cflagsPtr;
+    } else {
+      return &conditionFlags;
+    }
+  }
+
+  union {
+    volatile ssize_t conditionFlags; // condition flags can indicate if a
+                                     // thread has exceeded the memory limit,
+                                     // timed out, or received a signal
+    ssize_t* cflagsPtr;              // under hhvm, this will point to the real
+                                     // condition flags, somewhere in the
+                                     // thread's targetcache
+  };
   void *surprisePage;              // beginning address of page to
                                    // protect for error conditions
   Mutex surpriseLock;              // mutex controlling access to surprisePage
@@ -374,12 +403,14 @@ extern void check_request_surprise(ThreadInfo *info) ATTRIBUTE_COLD;
 extern bool SegFaulting;
 
 inline void check_request_timeout(ThreadInfo *info) {
+  const_assert(!hhvm);
   if (SegFaulting) pause_and_exit();
   info->m_mm->refreshStats();
   if (info->m_reqInjectionData.conditionFlags) check_request_surprise(info);
 }
 
 inline void check_request_timeout_nomemcheck(ThreadInfo *info) {
+  const_assert(!hhvm);
   if (SegFaulting) pause_and_exit();
   if (info->m_reqInjectionData.conditionFlags) check_request_surprise(info);
 }

@@ -17,6 +17,8 @@
 #ifndef incl_VM_BYTECODE_H_
 #define incl_VM_BYTECODE_H_
 
+#include <boost/optional.hpp>
+
 #include "util/util.h"
 #include "runtime/base/complex_types.h"
 #include "runtime/base/class_info.h"
@@ -37,6 +39,8 @@
 #include "runtime/vm/class.h"
 #include "runtime/vm/instance.h"
 #include "runtime/vm/unit.h"
+#include "runtime/vm/name_value_table.h"
+#include "runtime/vm/request_arena.h"
 
 namespace HPHP {
 
@@ -79,46 +83,55 @@ private:
 
 public:
   ExtraArgs();
+  ExtraArgs(ExtraArgs*); // move (may take a null)
   ~ExtraArgs();
+
   void setExtraArgs(TypedValue* args, unsigned nargs);
   void copyExtraArgs(TypedValue* args, unsigned nargs);
   unsigned numExtraArgs() const;
   TypedValue* getExtraArg(unsigned argInd) const;
-
 };
 
-// Variable environment.
-//
-// A variable environment consists of the locals for the current function
-// (either pseudo-main or a normal function), plus any variables that are
-// dynamically defined.  A normal (not pseudo-main) function starts off with
-// a variable environment that contains only its locals, but a pseudo-main is
-// handed its caller's existing variable environment.  We want local variable
-// access to be fast for pseudo-mains, but we must maintain consistency with
-// the associated variable environment.
-//
-// We achieve a consistent variable environment without sacrificing locals
-// access performance by overlaying each pseudo-main's locals onto the
-// current variable environment, so that at any given time, a variable in the
-// variable environment has a canonical location (either a local variable on
-// the stack, or a dynamically defined variable), which can only change at
-// entry/exit of a pseudo-main.
+/*
+ * Variable environment.
+ *
+ * A variable environment consists of the locals for the current
+ * function (either pseudo-main or a normal function), plus any
+ * variables that are dynamically defined.
+ *
+ * Logically, a normal (not pseudo-main) function starts off with a
+ * variable environment that contains only its locals, but a
+ * pseudo-main is handed its caller's existing variable environment.
+ * Generally, however, we don't create a variable environment for a
+ * non-pseudo main until it actually needs one (i.e. if it is about to
+ * include another pseudo-main, or if it uses dynamic variable
+ * lookups).
+ *
+ * Named locals always appear in the expected place on the stack, even
+ * after a VarEnv is attached.  Internally uses a NameValueTable to
+ * hook up names to the local locations.
+ */
 class VarEnv {
  private:
-  ActRec* m_cfp;
-  HphpArray* m_name2info;
-  std::vector<TypedValue**> m_restoreLocations;
-  ExtraArgs *m_extraArgs;
-
+  ExtraArgs m_extraArgs;
   uint16_t m_depth;
-  bool m_isGlobalScope;
+  bool m_malloced;
+  ActRec* m_cfp;
+  VarEnv* m_previous;
+  // TODO remove vector (#1099580).  Note: trying changing this to a
+  // TinyVector<> for now increased icache misses, but maybe will be
+  // feasable later (see D511561).
+  std::vector<TypedValue**> m_restoreLocations;
+  boost::optional<NameValueTable> m_nvTable;
 
  private:
-  explicit VarEnv(); // create global fp
-  explicit VarEnv(ActRec* fp, ExtraArgs* eArgs); // attach to fp
+  explicit VarEnv();
+  explicit VarEnv(ActRec* fp, ExtraArgs* eArgs);
   VarEnv(const VarEnv&);
   VarEnv& operator=(const VarEnv&);
   ~VarEnv();
+
+  void ensureNvt();
 
  public:
   /*
@@ -129,6 +142,12 @@ class VarEnv {
    * used when we need a variable environment for some caller frame
    * (because we're about to attach a callee frame using attach()) but
    * don't actually have one.
+   *
+   * `skipInsert' means not to insert the new VarEnv on the front of
+   * g_vmContext->m_topVarEnv.  In this case the caller must
+   * immediately call setPrevious() as appropriate---this is used to
+   * support the debugger, creating VarEnvs for frames in the middle
+   * of the ActRec chain.
    */
   static VarEnv* createLazyAttach(ActRec* fp, bool skipInsert = false);
 
@@ -137,6 +156,14 @@ class VarEnv {
 
   static void destroy(VarEnv*);
 
+  /*
+   * Walk the VarEnv chain.  Returns null when we're out of variable
+   * environments.  You can change the chain with setPrevious (see
+   * evalPHPDebugger).
+   */
+  VarEnv* previous() { return m_previous; }
+  void setPrevious(VarEnv* p) { m_previous = p; }
+
   void attach(ActRec* fp);
   void detach(ActRec* fp);
 
@@ -144,6 +171,9 @@ class VarEnv {
   void bind(const StringData* name, TypedValue* tv);
   void setWithRef(const StringData* name, TypedValue* tv);
   TypedValue* lookup(const StringData* name);
+  TypedValue* lookupAdd(const StringData* name);
+  TypedValue* lookupRawPointer(const StringData* name);
+  TypedValue* lookupAddRawPointer(const StringData* name);
   bool unset(const StringData* name);
 
   Array getDefinedVariables() const;
@@ -151,7 +181,11 @@ class VarEnv {
   // Used for save/store m_cfp for debugger
   void setCfp(ActRec* fp) { m_cfp = fp; }
   ActRec* getCfp() const { return m_cfp; }
-  bool isGlobalScope() const { return m_isGlobalScope; }
+  bool isGlobalScope() const { return !m_previous; }
+
+  // Access to wrapped ExtraArgs, if we have one.
+  unsigned numExtraArgs() const;
+  TypedValue* getExtraArg(unsigned argInd) const;
 };
 
 /**
@@ -317,6 +351,19 @@ struct ActRec {
                          m_invName, ExtraArgs, ExtraArgs*, m_extraArgs)
 
 #undef UNION_FIELD_ACCESSORS
+
+  // Accessors for extra arg queries.
+  int numExtraArgs() const {
+    return hasExtraArgs() ? getExtraArgs()->numExtraArgs() :
+           hasVarEnv()    ? getVarEnv()->numExtraArgs() :
+           0;
+  }
+  TypedValue* getExtraArg(unsigned ind) const {
+    ASSERT(hasExtraArgs() || hasVarEnv());
+    return hasExtraArgs() ? getExtraArgs()->getExtraArg(ind) :
+           hasVarEnv()    ? getVarEnv()->getExtraArg(ind) :
+           static_cast<TypedValue*>(0);
+  }
 };
 
 inline int32 arOffset(const ActRec* ar, const ActRec* other) {
@@ -474,21 +521,23 @@ public:
 
   inline void ALWAYS_INLINE popC() {
     ASSERT(m_top != m_base);
-    ASSERT(m_top->m_type != KindOfVariant);
+    ASSERT(tvIsPlausible(m_top));
+    ASSERT(m_top->m_type != KindOfRef);
     tvRefcountedDecRefCell(m_top);
     m_top++;
   }
 
   inline void ALWAYS_INLINE popV() {
     ASSERT(m_top != m_base);
-    ASSERT(m_top->m_type == KindOfVariant);
-    ASSERT(m_top->m_data.ptv != NULL);
-    tvDecRefVar(m_top);
+    ASSERT(m_top->m_type == KindOfRef);
+    ASSERT(m_top->m_data.pref != NULL);
+    tvDecRefRef(m_top);
     m_top++;
   }
 
   inline void ALWAYS_INLINE popTV() {
     ASSERT(m_top != m_base);
+    ASSERT(tvIsPlausible(m_top));
     tvRefcountedDecRef(m_top);
     m_top++;
   }
@@ -511,6 +560,11 @@ public:
         invName->release();
       }
     }
+
+    // This should only be used on a pre-live ActRec.
+    ASSERT(!ar->hasVarEnv());
+    ASSERT(!ar->hasExtraArgs());
+
     m_top += kNumActRecCells;
     ASSERT((uintptr_t)m_top <= (uintptr_t)m_base);
   }
@@ -541,7 +595,7 @@ public:
   inline void ALWAYS_INLINE dup() {
     ASSERT(m_top != m_base);
     ASSERT(m_top != m_elms);
-    ASSERT(m_top->m_type != KindOfVariant);
+    ASSERT(m_top->m_type != KindOfRef);
     Cell* fr = (Cell*)m_top;
     m_top--;
     Cell* to = (Cell*)m_top;
@@ -550,13 +604,13 @@ public:
 
   inline void ALWAYS_INLINE box() {
     ASSERT(m_top != m_base);
-    ASSERT(m_top->m_type != KindOfVariant);
+    ASSERT(m_top->m_type != KindOfRef);
     tvBox(m_top);
   }
 
   inline void ALWAYS_INLINE unbox() {
     ASSERT(m_top != m_base);
-    ASSERT(m_top->m_type == KindOfVariant);
+    ASSERT(m_top->m_type == KindOfRef);
     TV_UNBOX(m_top);
   }
 
@@ -677,13 +731,13 @@ public:
 
   inline Cell* ALWAYS_INLINE topC() {
     ASSERT(m_top != m_base);
-    ASSERT(m_top->m_type != KindOfVariant);
+    ASSERT(m_top->m_type != KindOfRef);
     return (Cell*)m_top;
   }
 
   inline Var* ALWAYS_INLINE topV() {
     ASSERT(m_top != m_base);
-    ASSERT(m_top->m_type == KindOfVariant);
+    ASSERT(m_top->m_type == KindOfRef);
     return (Var*)m_top;
   }
 
@@ -694,7 +748,7 @@ public:
 
   inline Cell* ALWAYS_INLINE indC(size_t ind) {
     ASSERT(m_top != m_base);
-    ASSERT(m_top[ind].m_type != KindOfVariant);
+    ASSERT(m_top[ind].m_type != KindOfRef);
     return (Cell*)(&m_top[ind]);
   }
 

@@ -18,10 +18,12 @@
 
 #include <signal.h>
 #include <boost/noncopyable.hpp>
+
 #include <runtime/vm/bytecode.h>
 #include <runtime/vm/translator/translator.h>
 #include <runtime/vm/translator/asm-x64.h>
 #include <runtime/vm/translator/srcdb.h>
+#include <runtime/vm/translator/unwind-x64.h>
 #include <runtime/vm/translator/regalloc.h>
 #include <tbb/concurrent_hash_map.h>
 #include <util/ringbuffer.h>
@@ -48,9 +50,6 @@ struct TraceletCountersVec {
   TraceletCountersVec() : m_size(0), m_elms(NULL), m_lock() { }
 };
 
-class TranslatorX64;
-extern TranslatorX64* tx64;
-
 class TranslatorX64 : public Translator, public SpillFill,
   public boost::noncopyable {
   friend class SrcRec; // so it can smash code.
@@ -60,6 +59,7 @@ class TranslatorX64 : public Translator, public SpillFill,
   friend class DiamondGuard;
   friend class DiamondReturn;
   friend class RedirectSpillFill;
+  friend class Tx64Reaper;
   template<int, int, int> friend class CondBlock;
   template<int> friend class JccBlock;
   template<int> friend class IfElseBlock;
@@ -92,8 +92,6 @@ class TranslatorX64 : public Translator, public SpillFill,
   TCA                    m_dtorStubs[MaxNumDataTypes];
   TCA                    m_typedDtorStub;
   TCA                    m_interceptHelper;
-  TCA                    m_requireHelper;
-  TCA                    m_toStringReturnHelper;
   TCA                    m_defClsHelper;
   TCA                    m_funcPrologueRedispatch;
   DataBlock              m_globalData;
@@ -111,6 +109,19 @@ class TranslatorX64 : public Translator, public SpillFill,
   RegAlloc                   m_regMap;
   std::stack<SavedRegState>  m_savedRegMaps;
   volatile bool              m_interceptsEnabled;
+  FixupMap                   m_fixupMap;
+  UnwindRegMap               m_unwindRegMap;
+  UnwindInfoHandle           m_unwindRegistrar;
+
+  struct PendingFixup {
+    TCA m_tca;
+    Fixup m_fixup;
+    PendingFixup() { }
+    PendingFixup(TCA tca, Fixup fixup) :
+      m_tca(tca), m_fixup(fixup) { }
+  };
+  vector<PendingFixup> m_pendingFixups;
+  UnwindRegInfo        m_pendingUnwindRegInfo;
 
   void drawCFG(std::ofstream& out) const;
   static vector<PhysReg> x64TranslRegs();
@@ -150,6 +161,7 @@ class TranslatorX64 : public Translator, public SpillFill,
                   bool clearThis = true, uintptr_t varEnvInvName = 0);
 
   void emitCallSaveRegs();
+  void prepareCallSaveRegs();
   void emitCallPassLoc(const Location& loc, int argNum);
   void emitCallPassLocAddr(const Location& loc, int argNum);
   void emitCall(Asm& a, TCA dest, bool killRegs=false);
@@ -200,7 +212,7 @@ class TranslatorX64 : public Translator, public SpillFill,
                                   const DynLocation& propInput,
                                   PhysReg scr);
 
-  inline bool isValidCodeAddress(TCA tca) {
+  inline bool isValidCodeAddress(TCA tca) const {
     return a.code.isValidAddress(tca) || astubs.code.isValidAddress(tca) ||
       atrampolines.code.isValidAddress(tca);
   }
@@ -239,6 +251,13 @@ class TranslatorX64 : public Translator, public SpillFill,
               RegSet toSave = RegSet());
   void emitRB(Asm& a, Trace::RingBufferType t, const char* msgm,
               RegSet toSave = RegSet());
+
+  enum {
+    ArgDontAllocate = -1,
+    ArgAnyReg = -2
+  };
+  void allocInputsForCall(const NormalizedInstruction& i,
+                          const int* args);
 
 #define INSTRS \
   CASE(PopC) \
@@ -372,6 +391,7 @@ PSEUDOINSTRS
   void emitPropSet(const NormalizedInstruction& i,
                    const DynLocation& base,
                    const DynLocation& rhs,
+                   PhysReg rhsReg,
                    PhysReg fieldAddr);
   void translateSetMProp(const Tracelet &t, const NormalizedInstruction& i);
   void emitPropGet(const NormalizedInstruction& i,
@@ -395,11 +415,15 @@ PSEUDOINSTRS
  public:
   template<typename T>
   void invalidateSrcKeys(const T& keys) {
-    BlockingLeaseHolder writer(m_writeLease);
+    BlockingLeaseHolder writer(s_writeLease);
     ASSERT(writer);
     for (typename T::const_iterator i = keys.begin(); i != keys.end(); ++i) {
       invalidateSrcKey(*i);
     }
+  }
+
+  const UnwindRegInfo* getUnwindInfo(CTCA ip) const {
+    return m_unwindRegMap.find(ip);
   }
 
   void enableIntercepts() {m_interceptsEnabled = true;}
@@ -418,15 +442,16 @@ PSEUDOINSTRS
   void poison(PhysReg dest);
 
   // public for syncing gdb state
-  HPHP::VM::Debug::DebugInfo m_debugInfo;
+  Debug::DebugInfo m_debugInfo;
 
+  void fixupWork(VMExecutionContext* ec, ActRec* startRbp) const;
   void fixup(VMExecutionContext* ec) const;
 
   // helpers for srcDB.
   SrcRec* getSrcRec(const SrcKey& sk) {
     // TODO: add a insert-or-find primitive to THM
     if (SrcRec* r = m_srcDB.find(sk)) return r;
-    ASSERT(m_writeLease.amOwner());
+    ASSERT(s_writeLease.amOwner());
     return m_srcDB.insert(sk);
   }
 
@@ -453,79 +478,11 @@ PSEUDOINSTRS
   void syncOutputs(const NormalizedInstruction& i);
   void syncOutputs(int stackOff);
 
+  static bool isPseudoEvent(const char* event);
+  void getPerfCounters(Array& ret);
+
 private:
   virtual void syncWork();
-
-  /*
-   * The write Lease guards write access to the translation cache,
-   * srcDB, and TransDB. The term "lease" is meant to indicate that
-   * the right of ownership is conferred for a long, variable time:
-   * often the entire length of a request. If a request is not
-   * actively translating, it will perform a "hinted drop" of the lease:
-   * the lease is unlocked but all calls to acquire(false) from other
-   * threads will fail for a short period of time.
-   */
-  struct Lease {
-    static const int64 kStandardHintExpireInterval = 750;
-    pthread_t       m_owner;
-    pthread_mutex_t m_lock;
-    // m_held: since there's no portable, universally invalid pthread_t,
-    // explicitly represent the held <-> unheld state machine.
-    volatile bool   m_held;
-    int64           m_hintExpire;
-    int64           m_hintKept;
-    int64           m_hintGrabbed;
-
-    Lease() : m_held(false), m_hintExpire(0), m_hintKept(0), m_hintGrabbed(0) {
-      pthread_mutex_init(&m_lock, NULL);
-    }
-    ~Lease() {
-      if (m_held && m_owner == pthread_self()) {
-        // Can happen, e.g., in exception scenarios.
-        pthread_mutex_unlock(&m_lock);
-      }
-      pthread_mutex_destroy(&m_lock);
-    }
-    bool amOwner() const;
-    // acquire: also returns true if we are already the writer.
-    bool acquire(bool blocking = false);
-    void drop(int64 hintExpireDelay = 0);
-
-    /*
-     * A malevolent entity sometimes takes the write lease out from under us
-     * for debugging purposes.
-     */
-    void gremlinLock();
-    void gremlinUnlock();
-  };
-
-  enum LeaseAcquire {
-    ACQUIRE,
-    NO_ACQUIRE,
-  };
-  struct LeaseHolderBase {
-  protected:
-    LeaseHolderBase(Lease& l, LeaseAcquire acquire, bool blocking);
-
-  public:
-    ~LeaseHolderBase();
-    operator bool() const { return m_haveLock; }
-    bool acquire();
-
-  private:
-    Lease& m_lease;
-    bool m_haveLock;
-    bool m_acquired;
-  };
-  struct LeaseHolder : public LeaseHolderBase {
-    LeaseHolder(Lease& l, LeaseAcquire acquire = ACQUIRE)
-        : LeaseHolderBase(l, acquire, false) {}
-  };
-  struct BlockingLeaseHolder : public LeaseHolderBase {
-    BlockingLeaseHolder(Lease& l)
-        : LeaseHolderBase(l, ACQUIRE, true) {}
-  };
-  Lease m_writeLease;
 
 public:
 
@@ -537,6 +494,7 @@ public:
   REQ(BIND_SIDE_EXIT)    \
   REQ(BIND_JMPCC_FIRST)  \
   REQ(BIND_JMPCC_SECOND) \
+  REQ(BIND_REQUIRE)      \
   REQ(RETRANSLATE)       \
   REQ(INTERPRET)         \
   REQ(POST_INTERP_RET)   \
@@ -551,17 +509,24 @@ public:
 
   void analyzeInstr(Tracelet& t, NormalizedInstruction& i);
   bool acquireWriteLease(bool blocking) {
-    return m_writeLease.acquire(blocking);
+    return s_writeLease.acquire(blocking);
   }
   void dropWriteLease() {
-    m_writeLease.drop();
+    s_writeLease.drop();
   }
   void interceptPrologues(Func* func);
 
   void emitGuardChecks(Asm& a, const SrcKey&, const ChangeMap&,
     const RefDeps&, SrcRec&);
+  void emitOneGuard(const Tracelet& t,
+                    const NormalizedInstruction& i,
+                    PhysReg reg, int disp, DataType type,
+                    TCA &sideExit);
+
   void emitVariantGuards(const Tracelet& t, const NormalizedInstruction& i);
   void emitPredictionGuards(const NormalizedInstruction& i);
+
+  Debug::DebugInfo* getDebugInfo() { return &m_debugInfo; }
 
 private:
   TCA getInterceptHelper();
@@ -569,6 +534,9 @@ private:
   bool checkTranslationLimit(const SrcKey&, const SrcRec&) const;
   void translateTracelet(const Tracelet& t);
   void emitStringCheck(Asm& _a, PhysReg base, int offset, PhysReg tmp);
+  void emitTypeCheck(Asm& _a, DataType dt,
+                     PhysReg base, int offset,
+                     PhysReg tmp = InvalidReg);
   void checkType(Asm&, const Location& l, const RuntimeType& rtt,
     SrcRec& fail);
   void checkRefs(Asm&, const SrcKey&, const RefDeps&, SrcRec&);
@@ -582,6 +550,7 @@ private:
   static const int kJmpLen = 5;
   static const int kJmpccLen = 6;
   static const int kJcc8Len = 3;
+  static const int kLeaRipLen = 7;
   // Cache alignment is required for mutable instructions to make sure
   // mutations don't "tear" on remote cpus.
   static const size_t kX64CacheLineSize = 64;
@@ -619,13 +588,18 @@ private:
   void emitMovRegReg(PhysReg src, PhysReg dest);
   void enterTC(SrcKey sk);
 
-  void recordGdbTranslation(const SrcKey& sk, const Unit* u, TCA start,
-                            int numTCBytes, bool exit, bool inPrologue);
-  void recordGdbStub(TCA start, TCA end, const char* name);
+  void recordGdbTranslation(const SrcKey& sk, const Unit* u,
+                            const Asm& a,
+                            const TCA start,
+                            bool exit, bool inPrologue);
+  void recordGdbStub(const Asm& a, TCA start, const char* name);
+  void recordBCInstr(uint32_t op, const Asm& a, const TCA addr);
 
   void emitStackCheck(int funcDepth, Offset pc);
   void emitStackCheckDynamic(int numArgs, Offset pc);
-  void emitLoadSurpriseFlags();
+  void emitTestSurpriseFlags();
+  void emitCheckSurpriseFlagsEnter(bool inTracelet, Offset pcOff,
+                                   Offset stackOff);
   TCA  emitTransCounterInc(Asm& a);
 
   static void trimExtraArgs(ActRec* ar);
@@ -633,6 +607,7 @@ private:
   static void setArgInActRec(ActRec* ar, int argNum, uint64_t datum,
                              DataType t);
   TCA funcPrologue(Func* func, int nArgs);
+  bool checkCachedPrologue(const Func* func, int param, TCA& plgOut) const;
   SrcKey emitPrologue(Func* func, int nArgs);
   void emitNativeImpl(const Func*, bool emitSavedRIPReturn);
   TCA emitInterceptPrologue(Func* func, TCA next=NULL);
@@ -647,11 +622,11 @@ private:
                        InclOpFlags flags);
   struct ReqLitStaticArgs {
     HPHP::Eval::PhpFile* m_efile;
-    TCA m_fallthrough;
+    TCA m_pseudoMain;
     Offset m_pcOff;
     bool m_local;
   };
-  static uint64 reqLitHelper(const ReqLitStaticArgs* args, Cell *fp, Cell *sp);
+  static void reqLitHelper(const ReqLitStaticArgs* args);
 
   TCA getNativeTrampoline(TCA helperAddress);
   TCA emitNativeTrampoline(TCA helperAddress);
@@ -661,11 +636,10 @@ public:
   TCA translate(const SrcKey *sk, bool align);
 
   TranslatorX64();
+  virtual ~TranslatorX64();
 
+  void initGdb();
   static TranslatorX64* Get();
-
-  // Called once at the dawn of time.
-  void processInit();
 
   // Called before entering a new PHP "world."
   void requestInit();
@@ -682,7 +656,7 @@ public:
   // true iff calling thread is sole writer.
   static bool canWrite() {
     // We can get called early in boot, so allow null tx64.
-    return !tx64 || tx64->m_writeLease.amOwner();
+    return !tx64 || s_writeLease.amOwner();
   }
 
   // Returns true on success
@@ -698,7 +672,15 @@ public:
   bool invalidateFile(Eval::PhpFile* f);
   void invalidateFileWork(Eval::PhpFile* f);
 
-protected:
+  // Start a new translation space. Returns true IFF this thread created
+  // a new space.
+  bool replace();
+
+  // Debugging interfaces to prevent tampering with code.
+  void protectCode();
+  void unprotectCode();
+
+private:
   virtual bool addDbgGuards(const Unit* unit);
   virtual bool addDbgGuard(const Func* func, Offset offset);
   void addDbgGuardImpl(const SrcKey& sk, SrcRec& sr);
@@ -728,7 +710,6 @@ class CodeCursor {
   }
 };
 
-// length in bytes of the code block holding trampolines
 const size_t kTrampolinesBlockSize = 8 << 12;
 
 // minimum length in bytes of each trampoline code sequence

@@ -1194,7 +1194,7 @@ void ClassScope::outputCPPClassMap(CodeGenerator &cg, AnalysisResultPtr ar) {
 
   // constants
   m_constants->outputCPPClassMap(cg, ar);
-      
+
   // user attributes
   UserAttributeMap::const_iterator it = m_userAttributes.begin();
   for (; it != m_userAttributes.end(); ++it) {
@@ -1516,7 +1516,7 @@ void ClassScope::outputCPPHashTableClasses
       StringToClassScopePtrVecMap::const_iterator iterClasses =
         classScopes.find(clsName);
       ClassScopeRawPtr cls = iterClasses->second[0];
-      cg_printf("  {0x%016llXLL,%d,",
+      cg_printf("  {" STRHASH_FMT ",%d,",
                 hash_string_i(clsName), jt.last() ? 1 : 0);
       if (cls->isVolatile()) {
         cg_printf("offsetof(GlobalVariables,CDEC(%s))",
@@ -1585,14 +1585,6 @@ void ClassScope::outputCPPClassVarInitImpl
   cg_indentBegin("Variant get_class_var_init(CStrRef s, "
                  "const char *var) {\n");
 
-  if (Option::EnableEval == Option::FullEval) {
-    // See if there's an eval'd version
-    cg_indentBegin("{\n");
-    cg_printf("Variant r;\n");
-    cg_printf("if (eval_get_class_var_init_hook(r, s, var)) "
-              "return r;\n");
-    cg_indentEnd("}\n");
-  }
   cg_printf("const ObjectStaticCallbacks *cwo = "
             "get_%sobject_static_callbacks(s);\n"
             "return LIKELY(cwo != 0) ? "
@@ -1644,16 +1636,6 @@ void ClassScope::outputCPPGetCallInfoStaticMethodImpl(
   cg_indentBegin(
     "bool get_call_info_static_method(MethodCallPackage &mcp) {\n");
 
-  if (Option::EnableEval == Option::FullEval) {
-    cg_printf("bool foundClass = false;\n");
-    cg_printf("if (eval_get_call_info_static_method_hook(mcp, foundClass)) "
-              "return true;\n");
-    cg_indentBegin("else if (foundClass) {\n");
-    cg_printf("mcp.fail();\n");
-    cg_printf("return false;\n");
-    cg_indentEnd("}\n");
-  }
-
   cg_printf("StringData *s ATTRIBUTE_UNUSED (mcp.rootCls);\n");
 
   cg_printf("const ObjectStaticCallbacks *cwo = "
@@ -1674,14 +1656,6 @@ void ClassScope::outputCPPGetStaticPropertyImpl
 
   cg_indentBegin("Variant get_static_property(CStrRef s, "
                  "const char *prop) {\n");
-  if (Option::EnableEval == Option::FullEval) {
-    // See if there's an eval'd version
-    cg_indentBegin("{\n");
-    cg_printf("Variant r;\n");
-    cg_printf("if (eval_get_static_property_hook(r, s, prop)) "
-              "return r;\n");
-    cg_indentEnd("}\n");
-  }
 
   cg.printf("const ObjectStaticCallbacks * cwo = "
             "get%s_object_static_callbacks(s);\n",
@@ -1692,14 +1666,6 @@ void ClassScope::outputCPPGetStaticPropertyImpl
 
   cg_indentBegin("Variant *get_static_property_lv(CStrRef s, "
                  "const char *prop) {\n");
-  if (Option::EnableEval == Option::FullEval) {
-    // See if there's an eval'd version
-    cg_indentBegin("{\n");
-    cg_printf("Variant *r;\n");
-    cg_printf("if (eval_get_static_property_lv_hook(r, s, prop)) "
-              "return r;\n");
-    cg_indentEnd("}\n");
-  }
 
   cg.printf("const ObjectStaticCallbacks * cwo = "
             "get%s_object_static_callbacks(s);\n",
@@ -1749,6 +1715,17 @@ static int propTableSize(int entries) {
   return size < 8 ? 8 : size;
 }
 
+static void getConstantEntries(ClassScopeRawPtr cls, bool system,
+                               vector<const Symbol *> &entries) {
+  const std::vector<Symbol*> &constVec =
+    cls->getConstants()->getSymbols();
+  for (unsigned j = 0; j < constVec.size(); j++) {
+    const Symbol *sym = constVec[j];
+    if (!system && !sym->getValue()) continue;
+    entries.push_back(sym);
+  }
+}
+
 static bool buildClassPropTableMap(
   CodeGenerator &cg, AnalysisResultPtr ar,
   const StringToClassScopePtrVecMap &classScopes,
@@ -1771,12 +1748,15 @@ static bool buildClassPropTableMap(
         assert(!sym->isStatic() || !sym->isOverride());
         entries[sym->isStatic()].push_back(sym);
       }
-      const std::vector<Symbol*> &constVec =
-        cls->getConstants()->getSymbols();
-      for (unsigned j = 0; j < constVec.size(); j++) {
-        const Symbol *sym = constVec[j];
-        if (!system && !sym->getValue()) continue;
-        entries[2].push_back(sym);
+
+      getConstantEntries(cls, system, entries[2]);
+      for (unsigned k = 0; k < cls->getBases().size(); k++) {
+        const string &base = cls->getBases()[k];
+        if (k > 0 || base != cls->getOriginalParent()) {
+          ClassScopeRawPtr bCls = ar->findExactClass(cls->getStmt(), base);
+          if (!bCls) continue;
+          getConstantEntries(bCls, system, entries[2]);
+        }
       }
 
       if (!entries[0].size() && !entries[1].size() && !entries[2].size()) {
@@ -1793,8 +1773,8 @@ static bool buildClassPropTableMap(
         unsigned p = 0;
         for (unsigned j = 0; j < entries[s].size(); j++) {
           const Symbol *sym = entries[s][j];
-          int hash = hash_string_i(sym->getName().c_str(),
-                                   sym->getName().size()) & (tableSize - 1);
+          strhash_t hash = hash_string_i(sym->getName().c_str(),
+                                      sym->getName().size()) & (tableSize - 1);
           int pix = -1;
           switch (s) {
             case 0:
@@ -1837,17 +1817,30 @@ static bool buildClassPropTableMap(
   return ret;
 }
 
-bool ClassScope::checkHasPropTable() {
-  VariableTablePtr variables = getVariables();
-
-  if (variables->getSymbols().size()) return true;
-
-  ConstantTablePtr constants = getConstants();
+static bool hasConstTable(ClassScopeRawPtr cls) {
+  ConstantTablePtr constants = cls->getConstants();
   const std::vector<Symbol*> &constVec = constants->getSymbols();
   if (!constVec.size()) return false;
   for (int i = 0, sz = constVec.size(); i < sz; i++) {
     const Symbol *sym = constVec[i];
-    if (getAttribute(ClassScope::System) || sym->getValue()) return true;
+    if (cls->getAttribute(ClassScope::System) || sym->getValue()) return true;
+  }
+  return false;
+}
+
+bool ClassScope::checkHasPropTable(AnalysisResultConstPtr ar) {
+  VariableTablePtr variables = getVariables();
+
+  if (variables->getSymbols().size()) return true;
+
+  if (hasConstTable(ClassScopeRawPtr(this))) return true;
+
+  for (unsigned k = 0; k < m_bases.size(); k++) {
+    const string &base = m_bases[k];
+    if (k > 0 || base != m_parent) {
+      ClassScopeRawPtr bCls = ar->findExactClass(getStmt(), base);
+      if (bCls && hasConstTable(bCls)) return true;
+    }
   }
 
   return false;
@@ -1857,7 +1850,7 @@ ClassScopePtr ClassScope::getNextParentWithProp(AnalysisResultPtr ar) {
 
   if (derivesFromRedeclaring() == DirectFromRedeclared) return ClassScopePtr();
   ClassScopePtr parentCls = getParentScope(ar);
-  while (parentCls && !parentCls->checkHasPropTable()) {
+  while (parentCls && !parentCls->checkHasPropTable(ar)) {
     parentCls = parentCls->getParentScope(ar);
   }
   return parentCls;
@@ -1983,6 +1976,7 @@ void ClassScope::outputCPPGetClassPropTableImpl(
   for (ClassPropTableMap::const_iterator iter = tables.begin();
        iter != tables.end(); iter++) {
     const ClassPropTableInfo &info = iter->second;
+    cg.setLiteralScope(info.cls->getContainingFile());
     for (s = 3; s--; ) {
       if (!info.syms[s].size()) continue;
       for (map<int, vector<IndexedSym> >::const_iterator
@@ -2032,6 +2026,8 @@ void ClassScope::outputCPPGetClassPropTableImpl(
     }
   }
 
+  cg.setLiteralScope(FileScopeRawPtr());
+
   if (!Option::UseScalarVariant) {
     cg_indentEnd("};\n");
   }
@@ -2066,6 +2062,7 @@ void ClassScope::outputCPPGetClassPropTableImpl(
   for (ClassPropTableMap::const_iterator iter = tables.begin();
        iter != tables.end(); iter++) {
     const ClassPropTableInfo &info = iter->second;
+    cg.setLiteralScope(info.cls->getContainingFile());
     for (s = 3; s--; ) {
       if (!info.syms[s].size()) continue;
       for (map<int, vector<IndexedSym> >::const_iterator
@@ -2077,7 +2074,7 @@ void ClassScope::outputCPPGetClassPropTableImpl(
           ExpressionPtr val = getSymInit(sym);
           string name, cls, id;
           int flags = 0;
-          int type = 0;
+          DataType type = KindOfUnknown;
           if (!val) {
             if (sym->isConstant()) {
               name = sym->getName();
@@ -2102,7 +2099,7 @@ void ClassScope::outputCPPGetClassPropTableImpl(
           }
           int *p;
           int name_ix = -1, cls_ix = -1;
-          if ((flags & ConstNeedsSysCon) && type != KindOfVariant) {
+          if ((flags & ConstNeedsSysCon) && type != KindOfUnknown) {
             string n = cls + "$$" + name;
             p = &siIndex[n];
             if (!*p) {
@@ -2187,8 +2184,8 @@ void ClassScope::outputCPPGetClassPropTableImpl(
                             Option::ClassPropTablePrefix, svarIndex[id] - 1);
                 }
               }
-            } else if ((flags & ConstNeedsSysCon) && type != KindOfVariant) {
-              cg_printf("0x%08x%07x7", name_ix, type);
+            } else if ((flags & ConstNeedsSysCon) && type != KindOfUnknown) {
+              cg_printf("0x%08x%07x7", name_ix, int(type));
             } else if (flags & ConstMagicIO) {
               cg_printf("(int64)&BuiltinFiles::Get%s, 0x1%07x6",
                         name.c_str(), index++);
@@ -2242,6 +2239,7 @@ void ClassScope::outputCPPGetClassPropTableImpl(
   for (ClassPropTableMap::const_iterator iter = tables.begin();
        iter != tables.end(); iter++) {
     const ClassPropTableInfo &info = iter->second;
+    cg.setLiteralScope(info.cls->getContainingFile());
     for (s = 3; s--; ) {
       if (!info.syms[s].size()) continue;
       ClassScopePtr cls = info.cls;
@@ -2272,12 +2270,12 @@ void ClassScope::outputCPPGetClassPropTableImpl(
 
           string prop(sym->getName());
           int flags = 0;
-          int dtype = sym->getFinalType()->getDataType();
+          DataType ptype = sym->getFinalType()->getDataType();
           if (sym->isStatic()) {
             flags |= ClassPropTableEntry::Static;
             if (v[k].privIndex < 0) {
               bool needsInit = true;
-              switch (dtype) {
+              switch (ptype) {
                 case KindOfBoolean:
                   if (cflags & ConstFalse) needsInit = false;
                   goto check_plain;
@@ -2288,10 +2286,9 @@ void ClassScope::outputCPPGetClassPropTableImpl(
                   if (cflags & ConstDZero) needsInit = false;
                   goto check_plain;
                 case KindOfString:
-                case KindOfStaticString:
                 case KindOfArray:
                   if (cflags & ConstNull) needsInit = false;
-                case KindOfVariant:
+                case KindOfUnknown:
                 check_plain:
                   if (cflags & ConstPlain && !system) {
                     flags |= ClassPropTableEntry::FastInit;
@@ -2330,12 +2327,14 @@ void ClassScope::outputCPPGetClassPropTableImpl(
           }
           if (k == sz - 1) flags |= ClassPropTableEntry::Last;
           curEntry++;
-          cg_printf("{0x%016llXLL,%d,%d,%d,%d,%d,",
+          ASSERT(int16_t(next - cur) == int32_t(next - cur));
+          ASSERT(int16_t(off) == int32_t(off));
+          cg_printf("{" STRHASH_FMT ",%d,%d,%d,%d,%d,",
                     hash_string(sym->getName().c_str(),
                                 sym->getName().size()),
                     next - cur, off,
                     int(s ? 0 : prop.size() - sym->getName().size()),
-                    flags, dtype);
+                    flags, int(ptype));
           if (s) {
             if (s == 2 && !sym->isDynamic()) {
               cg_printf("0,");
@@ -2367,6 +2366,7 @@ void ClassScope::outputCPPGetClassPropTableImpl(
     }
   }
   cg_indentEnd("};\n");
+  cg.setLiteralScope(FileScopeRawPtr());
 
   cg_indentBegin("static const int %shash_entries[] = {\n",
                  Option::ClassPropTablePrefix);
@@ -2815,7 +2815,7 @@ void ClassScope::outputCPPSupportMethodsImpl(CodeGenerator &cg,
       if (knownClass) {
         name = cls->getOriginalName().c_str();
       }
-      cg_printf("{0x%016llXLL,%d,\"%s\",",
+      cg_printf("{" STRHASH_FMT ",%d,\"%s\",",
                 hash_string_i(name), jt.last(),
                 CodeGenerator::EscapeLabel(name).c_str());
       if (knownClass) {
@@ -2962,7 +2962,7 @@ void ClassScope::outputCPPGlobalTableWrappersDecl(CodeGenerator &cg,
 }
 
 string ClassScope::getClassPropTableId(AnalysisResultPtr ar) {
-  if (checkHasPropTable()) return getId();
+  if (checkHasPropTable(ar)) return getId();
 
   if (derivesFromRedeclaring() != DirectFromRedeclared) {
     if (ClassScopePtr p = getParentScope(ar)) {
@@ -3226,6 +3226,7 @@ void ClassScope::outputCPPMethodInvokeTableSupport(CodeGenerator &cg,
                   funcSection.c_str());
       }
     }
+    if (fewArgs) cg_printf(" NEVER_INLINE");
     cg_indentBegin(" %s%s::%s%s(MethodCallPackage &mcp, ",
                    Option::ClassPrefix, id.c_str(),
                    fewArgs ? Option::InvokeFewArgsPrefix : Option::InvokePrefix,
@@ -3331,7 +3332,7 @@ void ClassScope::outputCPPMethodInvokeTable(
     string id = func->getContainingClass()->getId();
     int index = -1;
     cg.checkLiteralString(origName, index, ar, shared_from_this());
-    cg_printf("{ 0x%016llXLL, %d, %d, \"%s\", &%s%s%s%s },\n",
+    cg_printf("{ " STRHASH_FMT ", %d, %d, \"%s\", &%s%s%s%s },\n",
               hash_string_i(origName.c_str()),
               jt.last(),
               (int)origName.size(),

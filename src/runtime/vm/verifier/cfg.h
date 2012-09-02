@@ -17,14 +17,13 @@
 #ifndef incl_VM_VERIFIER_CFG_H_
 #define incl_VM_VERIFIER_CFG_H_
 
-#include <runtime/vm/repo.h>
-#include <runtime/vm/verifier/util.h>
+#include "runtime/vm/repo.h"
+#include "runtime/vm/verifier/util.h"
+#include "util/arena.h"
 
 namespace HPHP {
 namespace VM {
 namespace Verifier {
-
-class Arena;
 
 /**
  * Block is a standard basic block.  The # of ordinary successors
@@ -123,7 +122,8 @@ class GraphBuilder {
   typedef hphp_hash_map<PC, Block*> BlockMap;
   enum EdgeKind { FallThrough, Taken };
  public:
-  GraphBuilder(Arena& arena, const Func* func) : m_arena(arena), m_func(func),
+  GraphBuilder(Arena& arena, const Func* func)
+    : m_arena(arena), m_func(func),
       m_unit(func->unit()), m_graph(0) {
   }
   Graph* build();
@@ -264,56 +264,6 @@ inline Offset fpiPast(const FPIEnt& fpi, PC bc) {
   PC fcall = bc + fpi.m_fcallOff;
   return fcall + instrLen((Opcode*)fcall) - bc;
 }
-
-/**
- * Range that visits each PreClass in a Unit.
- */
-class PreClassRange {
-public:
-  PreClassRange(const Unit* unit) : m_unit(unit), m_id(0) {
-  }
-  bool empty() const {
-    return size_t(m_id) >= m_unit->numPreClasses();
-  }
-  PreClass* front() const {
-    ASSERT(!empty());
-    return m_unit->lookupPreClassId(m_id);
-  }
-  PreClass* popFront() {
-    PreClass* c = front();
-    ++m_id;
-    return c;
-  }
-private:
-  const Unit* m_unit;
-  Id m_id;
-};
-
-/**
- * Range over all Func's in a single unit.
- */
-class AllFuncs {
- public:
-  explicit AllFuncs(const Unit* unit)
-    : fr(&unit->funcs()[0],
-         &unit->funcs()[unit->funcs().size()])
-    , cr(unit)
-  {
-    if (fr.empty()) skip();
-  }
-  bool empty() const { return fr.empty() && cr.empty(); }
-  Func* front() const { ASSERT(!empty()); return fr.front(); }
-  Func* popFront() {
-    Func* f = fr.popFront();
-    if (fr.empty()) skip();
-    return f;
-  }
- private:
-  void skip();
-  typedef IterRange<Func* const*> FuncRange;
-  FuncRange fr;
-  PreClassRange cr;
-};
 
 }}} // HPHP::VM::Verifier
 

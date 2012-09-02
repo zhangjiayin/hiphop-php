@@ -1,10 +1,25 @@
+/*
+   +----------------------------------------------------------------------+
+   | HipHop for PHP                                                       |
+   +----------------------------------------------------------------------+
+   | Copyright (c) 2010- Facebook, Inc. (http://www.facebook.com)         |
+   | Copyright (c) 1997-2010 The PHP Group                                |
+   +----------------------------------------------------------------------+
+   | This source file is subject to version 3.01 of the PHP license,      |
+   | that is bundled with this package in the file LICENSE, and is        |
+   | available through the world-wide-web at the following url:           |
+   | http://www.php.net/license/3_01.txt                                  |
+   | If you did not receive a copy of the PHP license and are unable to   |
+   | obtain it through the world-wide-web, please send a note to          |
+   | license@php.net so we can mail you a copy immediately.               |
+   +----------------------------------------------------------------------+
+*/
 #include <runtime/ext_hhvm/ext_hhvm.h>
 #include <runtime/base/builtin_functions.h>
 #include <runtime/base/array/array_init.h>
 #include <runtime/ext/ext.h>
 #include <runtime/vm/class.h>
 #include <runtime/vm/runtime.h>
-#include <runtime/vm/exception_gate.h>
 #include <exception>
 
 namespace HPHP {
@@ -54,7 +69,6 @@ TypedValue * fg1_mail(TypedValue* rv, HPHP::VM::ActRec* ar, long long count) {
 }
 
 TypedValue* fg_mail(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -81,7 +95,7 @@ TypedValue* fg_mail(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 5);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -107,7 +121,6 @@ TypedValue * fg1_ezmlm_hash(TypedValue* rv, HPHP::VM::ActRec* ar, long long coun
 }
 
 TypedValue* fg_ezmlm_hash(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -134,7 +147,7 @@ TypedValue* fg_ezmlm_hash(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -150,7 +163,6 @@ _rv => rdi
 Value* fh_mailparse_msg_create(Value* _rv) asm("_ZN4HPHP22f_mailparse_msg_createEv");
 
 TypedValue* fg_mailparse_msg_create(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -171,7 +183,7 @@ TypedValue* fg_mailparse_msg_create(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -197,7 +209,6 @@ TypedValue * fg1_mailparse_msg_free(TypedValue* rv, HPHP::VM::ActRec* ar, long l
 }
 
 TypedValue* fg_mailparse_msg_free(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -224,7 +235,7 @@ TypedValue* fg_mailparse_msg_free(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -250,7 +261,6 @@ TypedValue * fg1_mailparse_msg_parse_file(TypedValue* rv, HPHP::VM::ActRec* ar, 
 }
 
 TypedValue* fg_mailparse_msg_parse_file(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -276,7 +286,7 @@ TypedValue* fg_mailparse_msg_parse_file(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -308,7 +318,6 @@ TypedValue * fg1_mailparse_msg_parse(TypedValue* rv, HPHP::VM::ActRec* ar, long 
 }
 
 TypedValue* fg_mailparse_msg_parse(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -335,7 +344,7 @@ TypedValue* fg_mailparse_msg_parse(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -364,7 +373,6 @@ TypedValue * fg1_mailparse_msg_extract_part_file(TypedValue* rv, HPHP::VM::ActRe
 }
 
 TypedValue* fg_mailparse_msg_extract_part_file(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -391,7 +399,7 @@ TypedValue* fg_mailparse_msg_extract_part_file(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -420,7 +428,6 @@ TypedValue * fg1_mailparse_msg_extract_whole_part_file(TypedValue* rv, HPHP::VM:
 }
 
 TypedValue* fg_mailparse_msg_extract_whole_part_file(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -447,7 +454,7 @@ TypedValue* fg_mailparse_msg_extract_whole_part_file(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -476,7 +483,6 @@ TypedValue * fg1_mailparse_msg_extract_part(TypedValue* rv, HPHP::VM::ActRec* ar
 }
 
 TypedValue* fg_mailparse_msg_extract_part(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -503,7 +509,7 @@ TypedValue* fg_mailparse_msg_extract_part(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -531,7 +537,6 @@ TypedValue * fg1_mailparse_msg_get_part_data(TypedValue* rv, HPHP::VM::ActRec* a
 }
 
 TypedValue* fg_mailparse_msg_get_part_data(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -559,7 +564,7 @@ TypedValue* fg_mailparse_msg_get_part_data(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -591,7 +596,6 @@ TypedValue * fg1_mailparse_msg_get_part(TypedValue* rv, HPHP::VM::ActRec* ar, lo
 }
 
 TypedValue* fg_mailparse_msg_get_part(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -617,7 +621,7 @@ TypedValue* fg_mailparse_msg_get_part(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -645,7 +649,6 @@ TypedValue * fg1_mailparse_msg_get_structure(TypedValue* rv, HPHP::VM::ActRec* a
 }
 
 TypedValue* fg_mailparse_msg_get_structure(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -673,7 +676,7 @@ TypedValue* fg_mailparse_msg_get_structure(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -701,7 +704,6 @@ TypedValue * fg1_mailparse_rfc822_parse_addresses(TypedValue* rv, HPHP::VM::ActR
 }
 
 TypedValue* fg_mailparse_rfc822_parse_addresses(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -729,7 +731,7 @@ TypedValue* fg_mailparse_rfc822_parse_addresses(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -765,7 +767,6 @@ TypedValue * fg1_mailparse_stream_encode(TypedValue* rv, HPHP::VM::ActRec* ar, l
 }
 
 TypedValue* fg_mailparse_stream_encode(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -792,7 +793,7 @@ TypedValue* fg_mailparse_stream_encode(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -818,7 +819,6 @@ TypedValue * fg1_mailparse_uudecode_all(TypedValue* rv, HPHP::VM::ActRec* ar, lo
 }
 
 TypedValue* fg_mailparse_uudecode_all(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -844,7 +844,7 @@ TypedValue* fg_mailparse_uudecode_all(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -870,7 +870,6 @@ TypedValue * fg1_mailparse_determine_best_xfer_encoding(TypedValue* rv, HPHP::VM
 }
 
 TypedValue* fg_mailparse_determine_best_xfer_encoding(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -896,7 +895,7 @@ TypedValue* fg_mailparse_determine_best_xfer_encoding(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 

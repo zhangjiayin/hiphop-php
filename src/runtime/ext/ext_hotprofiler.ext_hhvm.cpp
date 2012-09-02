@@ -1,10 +1,25 @@
+/*
+   +----------------------------------------------------------------------+
+   | HipHop for PHP                                                       |
+   +----------------------------------------------------------------------+
+   | Copyright (c) 2010- Facebook, Inc. (http://www.facebook.com)         |
+   | Copyright (c) 1997-2010 The PHP Group                                |
+   +----------------------------------------------------------------------+
+   | This source file is subject to version 3.01 of the PHP license,      |
+   | that is bundled with this package in the file LICENSE, and is        |
+   | available through the world-wide-web at the following url:           |
+   | http://www.php.net/license/3_01.txt                                  |
+   | If you did not receive a copy of the PHP license and are unable to   |
+   | obtain it through the world-wide-web, please send a note to          |
+   | license@php.net so we can mail you a copy immediately.               |
+   +----------------------------------------------------------------------+
+*/
 #include <runtime/ext_hhvm/ext_hhvm.h>
 #include <runtime/base/builtin_functions.h>
 #include <runtime/base/array/array_init.h>
 #include <runtime/ext/ext.h>
 #include <runtime/vm/class.h>
 #include <runtime/vm/runtime.h>
-#include <runtime/vm/exception_gate.h>
 #include <exception>
 
 namespace HPHP {
@@ -42,7 +57,6 @@ TypedValue * fg1_xhprof_enable(TypedValue* rv, HPHP::VM::ActRec* ar, long long c
 }
 
 TypedValue* fg_xhprof_enable(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -70,7 +84,7 @@ TypedValue* fg_xhprof_enable(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -86,7 +100,6 @@ _rv => rdi
 TypedValue* fh_xhprof_disable(TypedValue* _rv) asm("_ZN4HPHP16f_xhprof_disableEv");
 
 TypedValue* fg_xhprof_disable(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -105,7 +118,7 @@ TypedValue* fg_xhprof_disable(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -119,7 +132,6 @@ _ZN4HPHP23f_xhprof_network_enableEv
 void fh_xhprof_network_enable() asm("_ZN4HPHP23f_xhprof_network_enableEv");
 
 TypedValue* fg_xhprof_network_enable(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -140,7 +152,7 @@ TypedValue* fg_xhprof_network_enable(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -156,7 +168,6 @@ _rv => rdi
 TypedValue* fh_xhprof_network_disable(TypedValue* _rv) asm("_ZN4HPHP24f_xhprof_network_disableEv");
 
 TypedValue* fg_xhprof_network_disable(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -175,7 +186,7 @@ TypedValue* fg_xhprof_network_disable(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -201,7 +212,6 @@ TypedValue * fg1_xhprof_frame_begin(TypedValue* rv, HPHP::VM::ActRec* ar, long l
 }
 
 TypedValue* fg_xhprof_frame_begin(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -229,7 +239,7 @@ TypedValue* fg_xhprof_frame_begin(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -243,7 +253,6 @@ _ZN4HPHP18f_xhprof_frame_endEv
 void fh_xhprof_frame_end() asm("_ZN4HPHP18f_xhprof_frame_endEv");
 
 TypedValue* fg_xhprof_frame_end(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -264,7 +273,7 @@ TypedValue* fg_xhprof_frame_end(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -296,7 +305,6 @@ TypedValue * fg1_xhprof_run_trace(TypedValue* rv, HPHP::VM::ActRec* ar, long lon
 }
 
 TypedValue* fg_xhprof_run_trace(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -322,7 +330,7 @@ TypedValue* fg_xhprof_run_trace(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -336,7 +344,6 @@ _ZN4HPHP22f_xhprof_sample_enableEv
 void fh_xhprof_sample_enable() asm("_ZN4HPHP22f_xhprof_sample_enableEv");
 
 TypedValue* fg_xhprof_sample_enable(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -357,7 +364,7 @@ TypedValue* fg_xhprof_sample_enable(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -373,7 +380,6 @@ _rv => rdi
 TypedValue* fh_xhprof_sample_disable(TypedValue* _rv) asm("_ZN4HPHP23f_xhprof_sample_disableEv");
 
 TypedValue* fg_xhprof_sample_disable(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -392,7 +398,7 @@ TypedValue* fg_xhprof_sample_disable(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -407,7 +413,6 @@ callback => rdi
 void fh_fb_setprofile(TypedValue* callback) asm("_ZN4HPHP15f_fb_setprofileERKNS_7VariantE");
 
 TypedValue* fg_fb_setprofile(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -428,7 +433,181 @@ TypedValue* fg_fb_setprofile(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
+}
+
+
+
+/*
+void HPHP::f_hotprofiler_enable(int)
+_ZN4HPHP20f_hotprofiler_enableEi
+
+level => rdi
+*/
+
+void fh_hotprofiler_enable(int level) asm("_ZN4HPHP20f_hotprofiler_enableEi");
+
+TypedValue * fg1_hotprofiler_enable(TypedValue* rv, HPHP::VM::ActRec* ar, long long count) __attribute__((noinline,cold));
+TypedValue * fg1_hotprofiler_enable(TypedValue* rv, HPHP::VM::ActRec* ar, long long count) {
+  TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
+  rv->m_data.num = 0LL;
+  rv->_count = 0;
+  rv->m_type = KindOfNull;
+  tvCastToInt64InPlace(args-0);
+  fh_hotprofiler_enable((int)(args[-0].m_data.num));
+  return rv;
+}
+
+TypedValue* fg_hotprofiler_enable(HPHP::VM::ActRec *ar) {
+    TypedValue rv;
+    long long count = ar->numArgs();
+    TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
+    if (count == 1LL) {
+      if ((args-0)->m_type == KindOfInt64) {
+        rv.m_data.num = 0LL;
+        rv._count = 0;
+        rv.m_type = KindOfNull;
+        fh_hotprofiler_enable((int)(args[-0].m_data.num));
+        frame_free_locals_no_this_inl(ar, 1);
+        memcpy(&ar->m_r, &rv, sizeof(TypedValue));
+        return &ar->m_r;
+      } else {
+        fg1_hotprofiler_enable(&rv, ar, count);
+        frame_free_locals_no_this_inl(ar, 1);
+        memcpy(&ar->m_r, &rv, sizeof(TypedValue));
+        return &ar->m_r;
+      }
+    } else {
+      throw_wrong_arguments_nr("hotprofiler_enable", count, 1, 1, 1);
+    }
+    rv.m_data.num = 0LL;
+    rv._count = 0;
+    rv.m_type = KindOfNull;
+    frame_free_locals_no_this_inl(ar, 1);
+    memcpy(&ar->m_r, &rv, sizeof(TypedValue));
+    return &ar->m_r;
+  return &ar->m_r;
+}
+
+
+
+/*
+HPHP::Variant HPHP::f_hotprofiler_disable()
+_ZN4HPHP21f_hotprofiler_disableEv
+
+(return value) => rax
+_rv => rdi
+*/
+
+TypedValue* fh_hotprofiler_disable(TypedValue* _rv) asm("_ZN4HPHP21f_hotprofiler_disableEv");
+
+TypedValue* fg_hotprofiler_disable(HPHP::VM::ActRec *ar) {
+    TypedValue rv;
+    long long count = ar->numArgs();
+    TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
+    if (count == 0LL) {
+      fh_hotprofiler_disable((&(rv)));
+      if (rv.m_type == KindOfUninit) rv.m_type = KindOfNull;
+      frame_free_locals_no_this_inl(ar, 0);
+      memcpy(&ar->m_r, &rv, sizeof(TypedValue));
+      return &ar->m_r;
+    } else {
+      throw_toomany_arguments_nr("hotprofiler_disable", 0, 1);
+    }
+    rv.m_data.num = 0LL;
+    rv._count = 0;
+    rv.m_type = KindOfNull;
+    frame_free_locals_no_this_inl(ar, 0);
+    memcpy(&ar->m_r, &rv, sizeof(TypedValue));
+    return &ar->m_r;
+  return &ar->m_r;
+}
+
+
+
+/*
+void HPHP::f_phprof_enable(int)
+_ZN4HPHP15f_phprof_enableEi
+
+flags => rdi
+*/
+
+void fh_phprof_enable(int flags) asm("_ZN4HPHP15f_phprof_enableEi");
+
+TypedValue * fg1_phprof_enable(TypedValue* rv, HPHP::VM::ActRec* ar, long long count) __attribute__((noinline,cold));
+TypedValue * fg1_phprof_enable(TypedValue* rv, HPHP::VM::ActRec* ar, long long count) {
+  TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
+  rv->m_data.num = 0LL;
+  rv->_count = 0;
+  rv->m_type = KindOfNull;
+  tvCastToInt64InPlace(args-0);
+  fh_phprof_enable((count > 0) ? (int)(args[-0].m_data.num) : (int)(0));
+  return rv;
+}
+
+TypedValue* fg_phprof_enable(HPHP::VM::ActRec *ar) {
+    TypedValue rv;
+    long long count = ar->numArgs();
+    TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
+    if (count <= 1LL) {
+      if ((count <= 0 || (args-0)->m_type == KindOfInt64)) {
+        rv.m_data.num = 0LL;
+        rv._count = 0;
+        rv.m_type = KindOfNull;
+        fh_phprof_enable((count > 0) ? (int)(args[-0].m_data.num) : (int)(0));
+        frame_free_locals_no_this_inl(ar, 1);
+        memcpy(&ar->m_r, &rv, sizeof(TypedValue));
+        return &ar->m_r;
+      } else {
+        fg1_phprof_enable(&rv, ar, count);
+        frame_free_locals_no_this_inl(ar, 1);
+        memcpy(&ar->m_r, &rv, sizeof(TypedValue));
+        return &ar->m_r;
+      }
+    } else {
+      throw_toomany_arguments_nr("phprof_enable", 1, 1);
+    }
+    rv.m_data.num = 0LL;
+    rv._count = 0;
+    rv.m_type = KindOfNull;
+    frame_free_locals_no_this_inl(ar, 1);
+    memcpy(&ar->m_r, &rv, sizeof(TypedValue));
+    return &ar->m_r;
+  return &ar->m_r;
+}
+
+
+
+/*
+HPHP::Variant HPHP::f_phprof_disable()
+_ZN4HPHP16f_phprof_disableEv
+
+(return value) => rax
+_rv => rdi
+*/
+
+TypedValue* fh_phprof_disable(TypedValue* _rv) asm("_ZN4HPHP16f_phprof_disableEv");
+
+TypedValue* fg_phprof_disable(HPHP::VM::ActRec *ar) {
+    TypedValue rv;
+    long long count = ar->numArgs();
+    TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
+    if (count == 0LL) {
+      fh_phprof_disable((&(rv)));
+      if (rv.m_type == KindOfUninit) rv.m_type = KindOfNull;
+      frame_free_locals_no_this_inl(ar, 0);
+      memcpy(&ar->m_r, &rv, sizeof(TypedValue));
+      return &ar->m_r;
+    } else {
+      throw_toomany_arguments_nr("phprof_disable", 0, 1);
+    }
+    rv.m_data.num = 0LL;
+    rv._count = 0;
+    rv.m_type = KindOfNull;
+    frame_free_locals_no_this_inl(ar, 0);
+    memcpy(&ar->m_r, &rv, sizeof(TypedValue));
+    return &ar->m_r;
+  return &ar->m_r;
 }
 
 

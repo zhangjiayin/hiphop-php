@@ -23,6 +23,7 @@
 #include <runtime/base/ini_setting.h>
 #include <runtime/vm/event_hook.h>
 #include <util/alloc.h>
+#include <util/vdso.h>
 
 #ifdef __FreeBSD__
 # include <sys/resource.h>
@@ -304,14 +305,23 @@ tv_to_cycles(const struct timeval& tv, int64 MHz)
 }
 
 static inline uint64
-to_usec(int64 cycles, int64 MHz)
+to_usec(int64 cycles, int64 MHz, bool cpu_time = false)
 {
+  static int64 vdso_usable =
+    Util::Vdso::ClockGetTimeNS(CLOCK_THREAD_CPUTIME_ID);
+
+  if (cpu_time && vdso_usable >= 0)
+    return cycles / 1000;
   return (cycles + MHz/2) / MHz;
 }
 
 static esyscall vtsc_syscall("vtsc");
 
 static inline uint64 vtsc(int64 MHz) {
+  int64 rval = Util::Vdso::ClockGetTimeNS(CLOCK_THREAD_CPUTIME_ID);
+  if (rval >= 0) {
+    return rval;
+  }
   if (vtsc_syscall.num > 0) {
     return syscall(vtsc_syscall.num);
   }
@@ -569,7 +579,7 @@ public:
     arr.set("ct",  counts.count);
     arr.set("wt",  to_usec(counts.wall_time, MHz));
     if (flags & TrackCPU) {
-      arr.set("cpu", to_usec(counts.cpu, MHz));
+      arr.set("cpu", to_usec(counts.cpu, MHz, true));
     }
     if (flags & TrackMemory) {
       arr.set("mu",  counts.memory);
@@ -751,7 +761,7 @@ private:
       snprintf(buf, sizeof(buf),
                ",\"ct\": %lld,\"wt\": %lld,\"ut\": %lld,\"st\": 0",
                counts.count, to_usec(counts.tsc, m_MHz),
-               to_usec(counts.vtsc, m_MHz));
+               to_usec(counts.vtsc, m_MHz, true));
       print(buf);
 
       print("},\n");
@@ -1634,8 +1644,10 @@ void f_xhprof_frame_end() {
 void f_xhprof_enable(int flags/* = 0 */,
                      CArrRef args /* = null_array */) {
 #ifdef HOTPROFILER
-  if (vtsc_syscall.num <= 0) {
-    flags &= ~TrackVtsc; }
+  if (vtsc_syscall.num <= 0 &&
+      Util::Vdso::ClockGetTimeNS(CLOCK_THREAD_CPUTIME_ID) == -1) {
+    flags &= ~TrackVtsc;
+  }
   if (flags & TrackVtsc) {
     flags |= TrackCPU;
   }

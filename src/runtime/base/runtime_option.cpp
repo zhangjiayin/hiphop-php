@@ -13,6 +13,13 @@
    | license@php.net so we can mail you a copy immediately.               |
    +----------------------------------------------------------------------+
 */
+// Get SIZE_MAX definition.  Do this before including any other files, to make
+// sure that this is the first place that stdint.h is included.
+#ifndef __STDC_LIMIT_MACROS
+#define __STDC_LIMIT_MACROS
+#endif
+#define __STDC_LIMIT_MACROS
+#include <stdint.h>
 
 #include <runtime/base/runtime_option.h>
 #include <runtime/base/type_conversions.h>
@@ -72,7 +79,7 @@ bool RuntimeOption::AssertActive = false;
 bool RuntimeOption::AssertWarning = false;
 int RuntimeOption::NoticeFrequency = 1;
 int RuntimeOption::WarningFrequency = 1;
-int64 RuntimeOption::SerializationSizeLimit = 0;
+int64 RuntimeOption::SerializationSizeLimit = StringData::MaxSize;
 int64 RuntimeOption::StringOffsetLimit = 10 * 1024 * 1024; // 10MB
 
 std::string RuntimeOption::AccessLogDefaultFormat;
@@ -107,13 +114,15 @@ bool RuntimeOption::PageletServerThreadDropStack = false;
 int RuntimeOption::FiberCount = 1;
 int RuntimeOption::RequestTimeoutSeconds = 0;
 size_t RuntimeOption::ServerMemoryHeadRoom = 0;
-int64 RuntimeOption::RequestMemoryMaxBytes = -1;
+int64 RuntimeOption::RequestMemoryMaxBytes = INT64_MAX;
 int64 RuntimeOption::ImageMemoryMaxBytes = 0;
 int RuntimeOption::ResponseQueueCount;
 int RuntimeOption::ServerGracefulShutdownWait;
 bool RuntimeOption::ServerHarshShutdown = true;
 bool RuntimeOption::ServerEvilShutdown = true;
 int RuntimeOption::ServerDanglingWait;
+int RuntimeOption::ServerShutdownListenWait = 0;
+int RuntimeOption::ServerShutdownListenNoWork = -1;
 int RuntimeOption::GzipCompressionLevel = 3;
 std::string RuntimeOption::ForceCompressionURL;
 std::string RuntimeOption::ForceCompressionCookie;
@@ -293,7 +302,7 @@ bool RuntimeOption::EnableMemoryManager = true;
 bool RuntimeOption::CheckMemory = false;
 int RuntimeOption::MaxArrayChain = INT_MAX;
 bool RuntimeOption::UseHphpArray = hhvm;
-bool RuntimeOption::UseSmallArray = false; // deprecated & ignored.
+bool RuntimeOption::UseSmallArray = false;
 bool RuntimeOption::UseVectorArray = true;
 bool RuntimeOption::UseDirectCopy = false;
 bool RuntimeOption::EnableApc = true;
@@ -342,12 +351,9 @@ bool RuntimeOption::EnableShortTags = true;
 bool RuntimeOption::EnableAspTags = false;
 bool RuntimeOption::EnableXHP = true;
 bool RuntimeOption::EnableObjDestructCall = false;
-bool RuntimeOption::EnableEvalOptimization = true;
-int RuntimeOption::EvalScalarValueExprLimit = 64;
 bool RuntimeOption::CheckSymLink = false;
 bool RuntimeOption::NativeXHP = true;
 int RuntimeOption::ScannerType = 0;
-bool RuntimeOption::SandboxCheckMd5 = false;
 int RuntimeOption::MaxUserFunctionId = (2 * 65536);
 
 #ifdef TAINTED
@@ -355,22 +361,32 @@ bool RuntimeOption::EnableTaintWarnings = false;
 int RuntimeOption::TaintTraceMaxStrlen = 127;
 #endif
 
+// TODO: Task #1154042: These runtime options are no longer used, remove them
+bool RuntimeOption::EnableEvalOptimization = true;
+int RuntimeOption::EvalScalarValueExprLimit = 64;
+bool RuntimeOption::SandboxCheckMd5 = false;
 bool RuntimeOption::EnableStrict = false;
-int RuntimeOption::StrictLevel = 1; // StrictBasic, cf strict_mode.h
+int RuntimeOption::StrictLevel = 1;
 bool RuntimeOption::StrictFatal = false;
+
+const uint64_t kEvalVMStackElmsDefault =
 #ifdef VALGRIND
-#define EvalVMStackElmsDefault 0x800
+ 0x800
 #else
-#define EvalVMStackElmsDefault 0x4000
+ 0x4000
 #endif
-uint64 RuntimeOption::EvalVMStackElms = EvalVMStackElmsDefault;
+ ;
+const uint32_t kEvalVMInitialGlobalTableSizeDefault = 512;
+uint64 RuntimeOption::EvalVMStackElms = kEvalVMStackElmsDefault;
+uint32_t RuntimeOption::EvalVMInitialGlobalTableSize =
+  kEvalVMInitialGlobalTableSizeDefault;
 bool RuntimeOption::EvalJit = false;
 bool RuntimeOption::EvalAllowHhas = false;
 std::string RuntimeOption::EvalJitProfilePath = "/tmp/hhvm-profile";
-static const int kDefaultWarmupRequests = debug ? 3 : 7;
+static const int kDefaultWarmupRequests = debug ? 1 : 11;
 uint32 RuntimeOption::EvalJitWarmupRequests = kDefaultWarmupRequests;
 bool RuntimeOption::EvalJitProfileRecord = false;
-bool RuntimeOption::EvalJitNoGdb = false;
+bool RuntimeOption::EvalJitNoGdb = true;
 bool RuntimeOption::EvalProfileBC = false;
 std::string RuntimeOption::EvalProfileHWEvents = "";
 #define JIT_TRAMPOLINES_DEFAULT true
@@ -553,6 +569,7 @@ void RuntimeOption::Load(Hdf &config, StringVec *overwrites /* = NULL */,
     Logger::MaxMessagesPerRequest =
       logger["MaxMessagesPerRequest"].getInt32(-1);
 
+    Logger::UseSyslog = logger["UseSyslog"].getBool(false);
     Logger::UseLogFile = logger["UseLogFile"].getBool(true);
     Logger::UseCronolog = logger["UseCronolog"].getBool(false);
     if (Logger::UseLogFile) {
@@ -634,7 +651,8 @@ void RuntimeOption::Load(Hdf &config, StringVec *overwrites /* = NULL */,
     DropCacheCycle = rlimit["DropCacheCycle"].getInt64(0);
     MaxSQLRowCount = rlimit["MaxSQLRowCount"].getInt64(0);
     MaxMemcacheKeyCount = rlimit["MaxMemcacheKeyCount"].getInt64(0);
-    SerializationSizeLimit = rlimit["SerializationSizeLimit"].getInt64(0);
+    SerializationSizeLimit =
+      rlimit["SerializationSizeLimit"].getInt64(StringData::MaxSize);
     StringOffsetLimit = rlimit["StringOffsetLimit"].getInt64(10 * 1024 * 1024);
   }
   {
@@ -656,7 +674,7 @@ void RuntimeOption::Load(Hdf &config, StringVec *overwrites /* = NULL */,
     ServerStatCache = server["StatCache"].getBool(true);
     RequestTimeoutSeconds = server["RequestTimeoutSeconds"].getInt32(0);
     ServerMemoryHeadRoom = server["MemoryHeadRoom"].getInt64(0);
-    RequestMemoryMaxBytes = server["RequestMemoryMaxBytes"].getInt64(-1);
+    RequestMemoryMaxBytes = server["RequestMemoryMaxBytes"].getInt64(INT64_MAX);
     ResponseQueueCount = server["ResponseQueueCount"].getInt32(0);
     if (ResponseQueueCount <= 0) {
       ResponseQueueCount = ServerThreadCount / 10;
@@ -666,6 +684,8 @@ void RuntimeOption::Load(Hdf &config, StringVec *overwrites /* = NULL */,
     ServerHarshShutdown = server["HarshShutdown"].getBool(true);
     ServerEvilShutdown = server["EvilShutdown"].getBool(true);
     ServerDanglingWait = server["DanglingWait"].getInt16(0);
+    ServerShutdownListenWait = server["ShutdownListenWait"].getInt16(0);
+    ServerShutdownListenNoWork = server["ShutdownListenNoWork"].getInt16(-1);
     if (ServerGracefulShutdownWait < ServerDanglingWait) {
       ServerGracefulShutdownWait = ServerDanglingWait;
     }
@@ -781,7 +801,10 @@ void RuntimeOption::Load(Hdf &config, StringVec *overwrites /* = NULL */,
     CheckMemory = server["CheckMemory"].getBool();
     MaxArrayChain = server["MaxArrayChain"].getInt32(INT_MAX);
     UseHphpArray = server["UseHphpArray"].getBool(hhvm);
-    UseSmallArray = server["UseSmallArray"].getBool(false); // Deprecated, ignored.
+
+    // TODO: Task #1154042: This runtime option is no longer used, remove it
+    UseSmallArray = server["UseSmallArray"].getBool(false);
+
     UseVectorArray = server["UseVectorArray"].getBool(true);
     UseDirectCopy = server["UseDirectCopy"].getBool(false);
     AlwaysUseRelativePath = server["AlwaysUseRelativePath"].getBool(false);
@@ -1118,10 +1141,13 @@ void RuntimeOption::Load(Hdf &config, StringVec *overwrites /* = NULL */,
     EnableStrict = eval["EnableStrict"].getBool();
     StrictLevel = eval["StrictLevel"].getInt32(1); // StrictBasic
     StrictFatal = eval["StrictFatal"].getBool();
-    EvalVMStackElms = eval["VMStackElms"].getUInt64(EvalVMStackElmsDefault);
+    EvalVMStackElms = eval["VMStackElms"].getUInt64(kEvalVMStackElmsDefault);
+    EvalVMInitialGlobalTableSize =
+      eval["VMInitialGlobalTableSize"].getUInt64(
+        kEvalVMInitialGlobalTableSizeDefault);
     EvalJit = eval["Jit"].getBool(evalJitDefault());
     EvalAllowHhas = eval["AllowHhas"].getBool(false);
-    EvalJitNoGdb = eval["JitNoGdb"].getBool(false);
+    EvalJitNoGdb = eval["JitNoGdb"].getBool(true);
     EvalProfileBC = eval["ProfileBC"].getBool(false);
     EvalProfileHWEvents = eval["ProfileHWEvents"].getString();
     EvalJitTrampolines =

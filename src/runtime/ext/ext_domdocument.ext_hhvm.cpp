@@ -1,10 +1,25 @@
+/*
+   +----------------------------------------------------------------------+
+   | HipHop for PHP                                                       |
+   +----------------------------------------------------------------------+
+   | Copyright (c) 2010- Facebook, Inc. (http://www.facebook.com)         |
+   | Copyright (c) 1997-2010 The PHP Group                                |
+   +----------------------------------------------------------------------+
+   | This source file is subject to version 3.01 of the PHP license,      |
+   | that is bundled with this package in the file LICENSE, and is        |
+   | available through the world-wide-web at the following url:           |
+   | http://www.php.net/license/3_01.txt                                  |
+   | If you did not receive a copy of the PHP license and are unable to   |
+   | obtain it through the world-wide-web, please send a note to          |
+   | license@php.net so we can mail you a copy immediately.               |
+   +----------------------------------------------------------------------+
+*/
 #include <runtime/ext_hhvm/ext_hhvm.h>
 #include <runtime/base/builtin_functions.h>
 #include <runtime/base/array/array_init.h>
 #include <runtime/ext/ext.h>
 #include <runtime/vm/class.h>
 #include <runtime/vm/runtime.h>
-#include <runtime/vm/exception_gate.h>
 #include <exception>
 
 namespace HPHP {
@@ -42,7 +57,6 @@ TypedValue * fg1_dom_document_create_element(TypedValue* rv, HPHP::VM::ActRec* a
 }
 
 TypedValue* fg_dom_document_create_element(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -68,7 +82,7 @@ TypedValue* fg_dom_document_create_element(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -85,7 +99,6 @@ obj => rsi
 TypedValue* fh_dom_document_create_document_fragment(TypedValue* _rv, TypedValue* obj) asm("_ZN4HPHP39f_dom_document_create_document_fragmentERKNS_7VariantE");
 
 TypedValue* fg_dom_document_create_document_fragment(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -104,7 +117,7 @@ TypedValue* fg_dom_document_create_document_fragment(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -131,7 +144,6 @@ TypedValue * fg1_dom_document_create_text_node(TypedValue* rv, HPHP::VM::ActRec*
 }
 
 TypedValue* fg_dom_document_create_text_node(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -157,7 +169,7 @@ TypedValue* fg_dom_document_create_text_node(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -184,7 +196,6 @@ TypedValue * fg1_dom_document_create_comment(TypedValue* rv, HPHP::VM::ActRec* a
 }
 
 TypedValue* fg_dom_document_create_comment(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -210,7 +221,7 @@ TypedValue* fg_dom_document_create_comment(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -237,7 +248,6 @@ TypedValue * fg1_dom_document_create_cdatasection(TypedValue* rv, HPHP::VM::ActR
 }
 
 TypedValue* fg_dom_document_create_cdatasection(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -263,7 +273,7 @@ TypedValue* fg_dom_document_create_cdatasection(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -301,7 +311,6 @@ TypedValue * fg1_dom_document_create_processing_instruction(TypedValue* rv, HPHP
 }
 
 TypedValue* fg_dom_document_create_processing_instruction(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -327,7 +336,7 @@ TypedValue* fg_dom_document_create_processing_instruction(HPHP::VM::ActRec *ar) 
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -354,7 +363,6 @@ TypedValue * fg1_dom_document_create_attribute(TypedValue* rv, HPHP::VM::ActRec*
 }
 
 TypedValue* fg_dom_document_create_attribute(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -380,7 +388,7 @@ TypedValue* fg_dom_document_create_attribute(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -407,7 +415,6 @@ TypedValue * fg1_dom_document_create_entity_reference(TypedValue* rv, HPHP::VM::
 }
 
 TypedValue* fg_dom_document_create_entity_reference(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -433,7 +440,7 @@ TypedValue* fg_dom_document_create_entity_reference(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -460,7 +467,6 @@ TypedValue * fg1_dom_document_get_elements_by_tag_name(TypedValue* rv, HPHP::VM:
 }
 
 TypedValue* fg_dom_document_get_elements_by_tag_name(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -486,7 +492,7 @@ TypedValue* fg_dom_document_get_elements_by_tag_name(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -524,7 +530,6 @@ TypedValue * fg1_dom_document_import_node(TypedValue* rv, HPHP::VM::ActRec* ar, 
 }
 
 TypedValue* fg_dom_document_import_node(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -550,7 +555,7 @@ TypedValue* fg_dom_document_import_node(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -592,7 +597,6 @@ TypedValue * fg1_dom_document_create_element_ns(TypedValue* rv, HPHP::VM::ActRec
 }
 
 TypedValue* fg_dom_document_create_element_ns(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -618,7 +622,7 @@ TypedValue* fg_dom_document_create_element_ns(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 4);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -651,7 +655,6 @@ TypedValue * fg1_dom_document_create_attribute_ns(TypedValue* rv, HPHP::VM::ActR
 }
 
 TypedValue* fg_dom_document_create_attribute_ns(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -677,7 +680,7 @@ TypedValue* fg_dom_document_create_attribute_ns(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -710,7 +713,6 @@ TypedValue * fg1_dom_document_get_elements_by_tag_name_ns(TypedValue* rv, HPHP::
 }
 
 TypedValue* fg_dom_document_get_elements_by_tag_name_ns(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -736,7 +738,7 @@ TypedValue* fg_dom_document_get_elements_by_tag_name_ns(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -763,7 +765,6 @@ TypedValue * fg1_dom_document_get_element_by_id(TypedValue* rv, HPHP::VM::ActRec
 }
 
 TypedValue* fg_dom_document_get_element_by_id(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -789,7 +790,7 @@ TypedValue* fg_dom_document_get_element_by_id(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -806,7 +807,6 @@ obj => rsi
 TypedValue* fh_dom_document_normalize_document(TypedValue* _rv, TypedValue* obj) asm("_ZN4HPHP33f_dom_document_normalize_documentERKNS_7VariantE");
 
 TypedValue* fg_dom_document_normalize_document(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -825,7 +825,7 @@ TypedValue* fg_dom_document_normalize_document(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -863,7 +863,6 @@ TypedValue * fg1_dom_document_save(TypedValue* rv, HPHP::VM::ActRec* ar, long lo
 }
 
 TypedValue* fg_dom_document_save(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -889,7 +888,7 @@ TypedValue* fg_dom_document_save(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -928,7 +927,6 @@ TypedValue * fg1_dom_document_savexml(TypedValue* rv, HPHP::VM::ActRec* ar, long
 }
 
 TypedValue* fg_dom_document_savexml(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -954,7 +952,7 @@ TypedValue* fg_dom_document_savexml(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -971,7 +969,6 @@ obj => rsi
 TypedValue* fh_dom_document_validate(TypedValue* _rv, TypedValue* obj) asm("_ZN4HPHP23f_dom_document_validateERKNS_7VariantE");
 
 TypedValue* fg_dom_document_validate(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -990,7 +987,7 @@ TypedValue* fg_dom_document_validate(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1017,7 +1014,6 @@ TypedValue * fg1_dom_document_xinclude(TypedValue* rv, HPHP::VM::ActRec* ar, lon
 }
 
 TypedValue* fg_dom_document_xinclude(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1043,7 +1039,7 @@ TypedValue* fg_dom_document_xinclude(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1060,7 +1056,6 @@ obj => rsi
 TypedValue* fh_dom_document_save_html(TypedValue* _rv, TypedValue* obj) asm("_ZN4HPHP24f_dom_document_save_htmlERKNS_7VariantE");
 
 TypedValue* fg_dom_document_save_html(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1079,7 +1074,7 @@ TypedValue* fg_dom_document_save_html(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1106,7 +1101,6 @@ TypedValue * fg1_dom_document_save_html_file(TypedValue* rv, HPHP::VM::ActRec* a
 }
 
 TypedValue* fg_dom_document_save_html_file(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1132,7 +1126,7 @@ TypedValue* fg_dom_document_save_html_file(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1159,7 +1153,6 @@ TypedValue * fg1_dom_document_schema_validate_file(TypedValue* rv, HPHP::VM::Act
 }
 
 TypedValue* fg_dom_document_schema_validate_file(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1185,7 +1178,7 @@ TypedValue* fg_dom_document_schema_validate_file(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1212,7 +1205,6 @@ TypedValue * fg1_dom_document_schema_validate_xml(TypedValue* rv, HPHP::VM::ActR
 }
 
 TypedValue* fg_dom_document_schema_validate_xml(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1238,7 +1230,7 @@ TypedValue* fg_dom_document_schema_validate_xml(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1265,7 +1257,6 @@ TypedValue * fg1_dom_document_relaxng_validate_file(TypedValue* rv, HPHP::VM::Ac
 }
 
 TypedValue* fg_dom_document_relaxng_validate_file(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1291,7 +1282,7 @@ TypedValue* fg_dom_document_relaxng_validate_file(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1318,7 +1309,6 @@ TypedValue * fg1_dom_document_relaxng_validate_xml(TypedValue* rv, HPHP::VM::Act
 }
 
 TypedValue* fg_dom_document_relaxng_validate_xml(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1344,7 +1334,7 @@ TypedValue* fg_dom_document_relaxng_validate_xml(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1383,7 +1373,6 @@ TypedValue * fg1_dom_node_insert_before(TypedValue* rv, HPHP::VM::ActRec* ar, lo
 }
 
 TypedValue* fg_dom_node_insert_before(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1410,7 +1399,7 @@ TypedValue* fg_dom_node_insert_before(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1443,7 +1432,6 @@ TypedValue * fg1_dom_node_replace_child(TypedValue* rv, HPHP::VM::ActRec* ar, lo
 }
 
 TypedValue* fg_dom_node_replace_child(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1469,7 +1457,7 @@ TypedValue* fg_dom_node_replace_child(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1496,7 +1484,6 @@ TypedValue * fg1_dom_node_remove_child(TypedValue* rv, HPHP::VM::ActRec* ar, lon
 }
 
 TypedValue* fg_dom_node_remove_child(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1522,7 +1509,7 @@ TypedValue* fg_dom_node_remove_child(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1549,7 +1536,6 @@ TypedValue * fg1_dom_node_append_child(TypedValue* rv, HPHP::VM::ActRec* ar, lon
 }
 
 TypedValue* fg_dom_node_append_child(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1575,7 +1561,7 @@ TypedValue* fg_dom_node_append_child(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1592,7 +1578,6 @@ obj => rsi
 TypedValue* fh_dom_node_has_child_nodes(TypedValue* _rv, TypedValue* obj) asm("_ZN4HPHP26f_dom_node_has_child_nodesERKNS_7VariantE");
 
 TypedValue* fg_dom_node_has_child_nodes(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1611,7 +1596,7 @@ TypedValue* fg_dom_node_has_child_nodes(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1638,7 +1623,6 @@ TypedValue * fg1_dom_node_clone_node(TypedValue* rv, HPHP::VM::ActRec* ar, long 
 }
 
 TypedValue* fg_dom_node_clone_node(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1664,7 +1648,7 @@ TypedValue* fg_dom_node_clone_node(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1681,7 +1665,6 @@ obj => rsi
 TypedValue* fh_dom_node_normalize(TypedValue* _rv, TypedValue* obj) asm("_ZN4HPHP20f_dom_node_normalizeERKNS_7VariantE");
 
 TypedValue* fg_dom_node_normalize(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1700,7 +1683,7 @@ TypedValue* fg_dom_node_normalize(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1733,7 +1716,6 @@ TypedValue * fg1_dom_node_is_supported(TypedValue* rv, HPHP::VM::ActRec* ar, lon
 }
 
 TypedValue* fg_dom_node_is_supported(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1759,7 +1741,7 @@ TypedValue* fg_dom_node_is_supported(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1776,7 +1758,6 @@ obj => rsi
 TypedValue* fh_dom_node_has_attributes(TypedValue* _rv, TypedValue* obj) asm("_ZN4HPHP25f_dom_node_has_attributesERKNS_7VariantE");
 
 TypedValue* fg_dom_node_has_attributes(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1795,7 +1776,7 @@ TypedValue* fg_dom_node_has_attributes(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1822,7 +1803,6 @@ TypedValue * fg1_dom_node_is_same_node(TypedValue* rv, HPHP::VM::ActRec* ar, lon
 }
 
 TypedValue* fg_dom_node_is_same_node(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1848,7 +1828,7 @@ TypedValue* fg_dom_node_is_same_node(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1875,7 +1855,6 @@ TypedValue * fg1_dom_node_lookup_prefix(TypedValue* rv, HPHP::VM::ActRec* ar, lo
 }
 
 TypedValue* fg_dom_node_lookup_prefix(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1901,7 +1880,7 @@ TypedValue* fg_dom_node_lookup_prefix(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1928,7 +1907,6 @@ TypedValue * fg1_dom_node_is_default_namespace(TypedValue* rv, HPHP::VM::ActRec*
 }
 
 TypedValue* fg_dom_node_is_default_namespace(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1954,7 +1932,7 @@ TypedValue* fg_dom_node_is_default_namespace(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -1981,7 +1959,6 @@ TypedValue * fg1_dom_node_lookup_namespace_uri(TypedValue* rv, HPHP::VM::ActRec*
 }
 
 TypedValue* fg_dom_node_lookup_namespace_uri(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2007,7 +1984,7 @@ TypedValue* fg_dom_node_lookup_namespace_uri(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -2034,7 +2011,6 @@ TypedValue * fg1_dom_nodelist_item(TypedValue* rv, HPHP::VM::ActRec* ar, long lo
 }
 
 TypedValue* fg_dom_nodelist_item(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2060,7 +2036,7 @@ TypedValue* fg_dom_nodelist_item(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -2087,7 +2063,6 @@ TypedValue * fg1_dom_namednodemap_get_named_item(TypedValue* rv, HPHP::VM::ActRe
 }
 
 TypedValue* fg_dom_namednodemap_get_named_item(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2113,7 +2088,7 @@ TypedValue* fg_dom_namednodemap_get_named_item(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -2140,7 +2115,6 @@ TypedValue * fg1_dom_namednodemap_item(TypedValue* rv, HPHP::VM::ActRec* ar, lon
 }
 
 TypedValue* fg_dom_namednodemap_item(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2166,7 +2140,7 @@ TypedValue* fg_dom_namednodemap_item(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -2199,7 +2173,6 @@ TypedValue * fg1_dom_namednodemap_get_named_item_ns(TypedValue* rv, HPHP::VM::Ac
 }
 
 TypedValue* fg_dom_namednodemap_get_named_item_ns(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2225,7 +2198,7 @@ TypedValue* fg_dom_namednodemap_get_named_item_ns(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -2258,7 +2231,6 @@ TypedValue * fg1_dom_characterdata_substring_data(TypedValue* rv, HPHP::VM::ActR
 }
 
 TypedValue* fg_dom_characterdata_substring_data(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2284,7 +2256,7 @@ TypedValue* fg_dom_characterdata_substring_data(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -2311,7 +2283,6 @@ TypedValue * fg1_dom_characterdata_append_data(TypedValue* rv, HPHP::VM::ActRec*
 }
 
 TypedValue* fg_dom_characterdata_append_data(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2337,7 +2308,7 @@ TypedValue* fg_dom_characterdata_append_data(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -2370,7 +2341,6 @@ TypedValue * fg1_dom_characterdata_insert_data(TypedValue* rv, HPHP::VM::ActRec*
 }
 
 TypedValue* fg_dom_characterdata_insert_data(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2396,7 +2366,7 @@ TypedValue* fg_dom_characterdata_insert_data(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -2429,7 +2399,6 @@ TypedValue * fg1_dom_characterdata_delete_data(TypedValue* rv, HPHP::VM::ActRec*
 }
 
 TypedValue* fg_dom_characterdata_delete_data(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2455,7 +2424,7 @@ TypedValue* fg_dom_characterdata_delete_data(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -2492,7 +2461,6 @@ TypedValue * fg1_dom_characterdata_replace_data(TypedValue* rv, HPHP::VM::ActRec
 }
 
 TypedValue* fg_dom_characterdata_replace_data(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2518,7 +2486,7 @@ TypedValue* fg_dom_characterdata_replace_data(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 4);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -2535,7 +2503,6 @@ obj => rsi
 TypedValue* fh_dom_attr_is_id(TypedValue* _rv, TypedValue* obj) asm("_ZN4HPHP16f_dom_attr_is_idERKNS_7VariantE");
 
 TypedValue* fg_dom_attr_is_id(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2554,7 +2521,7 @@ TypedValue* fg_dom_attr_is_id(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -2581,7 +2548,6 @@ TypedValue * fg1_dom_element_get_attribute(TypedValue* rv, HPHP::VM::ActRec* ar,
 }
 
 TypedValue* fg_dom_element_get_attribute(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2607,7 +2573,7 @@ TypedValue* fg_dom_element_get_attribute(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -2640,7 +2606,6 @@ TypedValue * fg1_dom_element_set_attribute(TypedValue* rv, HPHP::VM::ActRec* ar,
 }
 
 TypedValue* fg_dom_element_set_attribute(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2666,7 +2631,7 @@ TypedValue* fg_dom_element_set_attribute(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -2693,7 +2658,6 @@ TypedValue * fg1_dom_element_remove_attribute(TypedValue* rv, HPHP::VM::ActRec* 
 }
 
 TypedValue* fg_dom_element_remove_attribute(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2719,7 +2683,7 @@ TypedValue* fg_dom_element_remove_attribute(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -2746,7 +2710,6 @@ TypedValue * fg1_dom_element_get_attribute_node(TypedValue* rv, HPHP::VM::ActRec
 }
 
 TypedValue* fg_dom_element_get_attribute_node(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2772,7 +2735,7 @@ TypedValue* fg_dom_element_get_attribute_node(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -2799,7 +2762,6 @@ TypedValue * fg1_dom_element_set_attribute_node(TypedValue* rv, HPHP::VM::ActRec
 }
 
 TypedValue* fg_dom_element_set_attribute_node(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2825,7 +2787,7 @@ TypedValue* fg_dom_element_set_attribute_node(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -2852,7 +2814,6 @@ TypedValue * fg1_dom_element_remove_attribute_node(TypedValue* rv, HPHP::VM::Act
 }
 
 TypedValue* fg_dom_element_remove_attribute_node(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2878,7 +2839,7 @@ TypedValue* fg_dom_element_remove_attribute_node(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -2905,7 +2866,6 @@ TypedValue * fg1_dom_element_get_elements_by_tag_name(TypedValue* rv, HPHP::VM::
 }
 
 TypedValue* fg_dom_element_get_elements_by_tag_name(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2931,7 +2891,7 @@ TypedValue* fg_dom_element_get_elements_by_tag_name(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -2964,7 +2924,6 @@ TypedValue * fg1_dom_element_get_attribute_ns(TypedValue* rv, HPHP::VM::ActRec* 
 }
 
 TypedValue* fg_dom_element_get_attribute_ns(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2990,7 +2949,7 @@ TypedValue* fg_dom_element_get_attribute_ns(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -3027,7 +2986,6 @@ TypedValue * fg1_dom_element_set_attribute_ns(TypedValue* rv, HPHP::VM::ActRec* 
 }
 
 TypedValue* fg_dom_element_set_attribute_ns(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -3053,7 +3011,7 @@ TypedValue* fg_dom_element_set_attribute_ns(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 4);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -3086,7 +3044,6 @@ TypedValue * fg1_dom_element_remove_attribute_ns(TypedValue* rv, HPHP::VM::ActRe
 }
 
 TypedValue* fg_dom_element_remove_attribute_ns(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -3112,7 +3069,7 @@ TypedValue* fg_dom_element_remove_attribute_ns(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -3145,7 +3102,6 @@ TypedValue * fg1_dom_element_get_attribute_node_ns(TypedValue* rv, HPHP::VM::Act
 }
 
 TypedValue* fg_dom_element_get_attribute_node_ns(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -3171,7 +3127,7 @@ TypedValue* fg_dom_element_get_attribute_node_ns(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -3198,7 +3154,6 @@ TypedValue * fg1_dom_element_set_attribute_node_ns(TypedValue* rv, HPHP::VM::Act
 }
 
 TypedValue* fg_dom_element_set_attribute_node_ns(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -3224,7 +3179,7 @@ TypedValue* fg_dom_element_set_attribute_node_ns(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -3257,7 +3212,6 @@ TypedValue * fg1_dom_element_get_elements_by_tag_name_ns(TypedValue* rv, HPHP::V
 }
 
 TypedValue* fg_dom_element_get_elements_by_tag_name_ns(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -3283,7 +3237,7 @@ TypedValue* fg_dom_element_get_elements_by_tag_name_ns(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -3310,7 +3264,6 @@ TypedValue * fg1_dom_element_has_attribute(TypedValue* rv, HPHP::VM::ActRec* ar,
 }
 
 TypedValue* fg_dom_element_has_attribute(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -3336,7 +3289,7 @@ TypedValue* fg_dom_element_has_attribute(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -3369,7 +3322,6 @@ TypedValue * fg1_dom_element_has_attribute_ns(TypedValue* rv, HPHP::VM::ActRec* 
 }
 
 TypedValue* fg_dom_element_has_attribute_ns(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -3395,7 +3347,7 @@ TypedValue* fg_dom_element_has_attribute_ns(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -3428,7 +3380,6 @@ TypedValue * fg1_dom_element_set_id_attribute(TypedValue* rv, HPHP::VM::ActRec* 
 }
 
 TypedValue* fg_dom_element_set_id_attribute(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -3454,7 +3405,7 @@ TypedValue* fg_dom_element_set_id_attribute(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -3491,7 +3442,6 @@ TypedValue * fg1_dom_element_set_id_attribute_ns(TypedValue* rv, HPHP::VM::ActRe
 }
 
 TypedValue* fg_dom_element_set_id_attribute_ns(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -3517,7 +3467,7 @@ TypedValue* fg_dom_element_set_id_attribute_ns(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 4);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -3550,7 +3500,6 @@ TypedValue * fg1_dom_element_set_id_attribute_node(TypedValue* rv, HPHP::VM::Act
 }
 
 TypedValue* fg_dom_element_set_id_attribute_node(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -3576,7 +3525,7 @@ TypedValue* fg_dom_element_set_id_attribute_node(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -3603,7 +3552,6 @@ TypedValue * fg1_dom_text_split_text(TypedValue* rv, HPHP::VM::ActRec* ar, long 
 }
 
 TypedValue* fg_dom_text_split_text(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -3629,7 +3577,7 @@ TypedValue* fg_dom_text_split_text(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -3646,7 +3594,6 @@ obj => rsi
 TypedValue* fh_dom_text_is_whitespace_in_element_content(TypedValue* _rv, TypedValue* obj) asm("_ZN4HPHP43f_dom_text_is_whitespace_in_element_contentERKNS_7VariantE");
 
 TypedValue* fg_dom_text_is_whitespace_in_element_content(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -3665,7 +3612,7 @@ TypedValue* fg_dom_text_is_whitespace_in_element_content(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -3698,7 +3645,6 @@ TypedValue * fg1_dom_xpath_register_ns(TypedValue* rv, HPHP::VM::ActRec* ar, lon
 }
 
 TypedValue* fg_dom_xpath_register_ns(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -3724,7 +3670,7 @@ TypedValue* fg_dom_xpath_register_ns(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -3762,7 +3708,6 @@ TypedValue * fg1_dom_xpath_query(TypedValue* rv, HPHP::VM::ActRec* ar, long long
 }
 
 TypedValue* fg_dom_xpath_query(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -3788,7 +3733,7 @@ TypedValue* fg_dom_xpath_query(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -3826,7 +3771,6 @@ TypedValue * fg1_dom_xpath_evaluate(TypedValue* rv, HPHP::VM::ActRec* ar, long l
 }
 
 TypedValue* fg_dom_xpath_evaluate(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -3852,7 +3796,7 @@ TypedValue* fg_dom_xpath_evaluate(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -3870,7 +3814,6 @@ funcs => rdx
 TypedValue* fh_dom_xpath_register_php_functions(TypedValue* _rv, TypedValue* obj, TypedValue* funcs) asm("_ZN4HPHP34f_dom_xpath_register_php_functionsERKNS_7VariantES2_");
 
 TypedValue* fg_dom_xpath_register_php_functions(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -3890,80 +3833,18 @@ TypedValue* fg_dom_xpath_register_php_functions(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
-
-class c_DOMNode_Instance : public c_DOMNode {
-public:
-  c_DOMNode_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_DOMNode));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_DOMNode) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_DOMNode_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_DOMNode_Instance *this_ = (c_DOMNode_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_DOMNode) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_DOMNode::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_DOMNode::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_DOMNode::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_DOMNode::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_DOMNode_Instance(HPHP::VM::Class* cls) {
-  return c_DOMNode_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_DOMNode) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_DOMNode(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -3976,7 +3857,6 @@ this_ => rdi
 void th_7DOMNode___construct(ObjectData* this_) asm("_ZN4HPHP9c_DOMNode13t___constructEv");
 
 TypedValue* tg_7DOMNode___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -4002,7 +3882,7 @@ TypedValue* tg_7DOMNode___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -4027,7 +3907,6 @@ TypedValue* tg1_7DOMNode_appendChild(TypedValue* rv, HPHP::VM::ActRec* ar, long 
 }
 
 TypedValue* tg_7DOMNode_appendChild(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -4058,7 +3937,7 @@ TypedValue* tg_7DOMNode_appendChild(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -4083,7 +3962,6 @@ TypedValue* tg1_7DOMNode_cloneNode(TypedValue* rv, HPHP::VM::ActRec* ar, long lo
 }
 
 TypedValue* tg_7DOMNode_cloneNode(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -4114,7 +3992,7 @@ TypedValue* tg_7DOMNode_cloneNode(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -4128,7 +4006,6 @@ this_ => rdi
 long long th_7DOMNode_getLineNo(ObjectData* this_) asm("_ZN4HPHP9c_DOMNode11t_getlinenoEv");
 
 TypedValue* tg_7DOMNode_getLineNo(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -4153,7 +4030,7 @@ TypedValue* tg_7DOMNode_getLineNo(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -4167,7 +4044,6 @@ this_ => rdi
 bool th_7DOMNode_hasAttributes(ObjectData* this_) asm("_ZN4HPHP9c_DOMNode15t_hasattributesEv");
 
 TypedValue* tg_7DOMNode_hasAttributes(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -4192,7 +4068,7 @@ TypedValue* tg_7DOMNode_hasAttributes(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -4206,7 +4082,6 @@ this_ => rdi
 bool th_7DOMNode_hasChildNodes(ObjectData* this_) asm("_ZN4HPHP9c_DOMNode15t_haschildnodesEv");
 
 TypedValue* tg_7DOMNode_hasChildNodes(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -4231,7 +4106,7 @@ TypedValue* tg_7DOMNode_hasChildNodes(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -4268,7 +4143,6 @@ TypedValue* tg1_7DOMNode_insertBefore(TypedValue* rv, HPHP::VM::ActRec* ar, long
 }
 
 TypedValue* tg_7DOMNode_insertBefore(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -4300,7 +4174,7 @@ TypedValue* tg_7DOMNode_insertBefore(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -4325,7 +4199,6 @@ TypedValue* tg1_7DOMNode_isDefaultNamespace(TypedValue* rv, HPHP::VM::ActRec* ar
 }
 
 TypedValue* tg_7DOMNode_isDefaultNamespace(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -4357,7 +4230,7 @@ TypedValue* tg_7DOMNode_isDefaultNamespace(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -4382,7 +4255,6 @@ TypedValue* tg1_7DOMNode_isSameNode(TypedValue* rv, HPHP::VM::ActRec* ar, long l
 }
 
 TypedValue* tg_7DOMNode_isSameNode(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -4414,7 +4286,7 @@ TypedValue* tg_7DOMNode_isSameNode(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -4445,7 +4317,6 @@ TypedValue* tg1_7DOMNode_isSupported(TypedValue* rv, HPHP::VM::ActRec* ar, long 
 }
 
 TypedValue* tg_7DOMNode_isSupported(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -4477,7 +4348,7 @@ TypedValue* tg_7DOMNode_isSupported(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -4502,7 +4373,6 @@ TypedValue* tg1_7DOMNode_lookupNamespaceUri(TypedValue* rv, HPHP::VM::ActRec* ar
 }
 
 TypedValue* tg_7DOMNode_lookupNamespaceUri(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -4533,7 +4403,7 @@ TypedValue* tg_7DOMNode_lookupNamespaceUri(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -4558,7 +4428,6 @@ TypedValue* tg1_7DOMNode_lookupPrefix(TypedValue* rv, HPHP::VM::ActRec* ar, long
 }
 
 TypedValue* tg_7DOMNode_lookupPrefix(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -4589,7 +4458,7 @@ TypedValue* tg_7DOMNode_lookupPrefix(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -4602,7 +4471,6 @@ this_ => rdi
 void th_7DOMNode_normalize(ObjectData* this_) asm("_ZN4HPHP9c_DOMNode11t_normalizeEv");
 
 TypedValue* tg_7DOMNode_normalize(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -4628,7 +4496,7 @@ TypedValue* tg_7DOMNode_normalize(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -4653,7 +4521,6 @@ TypedValue* tg1_7DOMNode_removeChild(TypedValue* rv, HPHP::VM::ActRec* ar, long 
 }
 
 TypedValue* tg_7DOMNode_removeChild(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -4684,7 +4551,7 @@ TypedValue* tg_7DOMNode_removeChild(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -4715,7 +4582,6 @@ TypedValue* tg1_7DOMNode_replaceChild(TypedValue* rv, HPHP::VM::ActRec* ar, long
 }
 
 TypedValue* tg_7DOMNode_replaceChild(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -4746,7 +4612,7 @@ TypedValue* tg_7DOMNode_replaceChild(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -4789,7 +4655,6 @@ TypedValue* tg1_7DOMNode_c14n(TypedValue* rv, HPHP::VM::ActRec* ar, long long co
 }
 
 TypedValue* tg_7DOMNode_c14n(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -4822,7 +4687,7 @@ TypedValue* tg_7DOMNode_c14n(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 4);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -4869,7 +4734,6 @@ TypedValue* tg1_7DOMNode_c14nfile(TypedValue* rv, HPHP::VM::ActRec* ar, long lon
 }
 
 TypedValue* tg_7DOMNode_c14nfile(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -4902,7 +4766,7 @@ TypedValue* tg_7DOMNode_c14nfile(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 5);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -4917,7 +4781,6 @@ this_ => rsi
 TypedValue* th_7DOMNode_getNodePath(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP9c_DOMNode13t_getnodepathEv");
 
 TypedValue* tg_7DOMNode_getNodePath(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -4941,7 +4804,7 @@ TypedValue* tg_7DOMNode_getNodePath(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -4957,7 +4820,6 @@ name => rdx
 TypedValue* th_7DOMNode___get(TypedValue* _rv, ObjectData* this_, TypedValue* name) asm("_ZN4HPHP9c_DOMNode7t___getENS_7VariantE");
 
 TypedValue* tg_7DOMNode___get(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -4981,7 +4843,7 @@ TypedValue* tg_7DOMNode___get(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -4998,7 +4860,6 @@ value => rcx
 TypedValue* th_7DOMNode___set(TypedValue* _rv, ObjectData* this_, TypedValue* name, TypedValue* value) asm("_ZN4HPHP9c_DOMNode7t___setENS_7VariantES1_");
 
 TypedValue* tg_7DOMNode___set(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -5022,7 +4883,7 @@ TypedValue* tg_7DOMNode___set(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -5037,7 +4898,6 @@ name => rsi
 bool th_7DOMNode___isset(ObjectData* this_, TypedValue* name) asm("_ZN4HPHP9c_DOMNode9t___issetENS_7VariantE");
 
 TypedValue* tg_7DOMNode___isset(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -5062,7 +4922,7 @@ TypedValue* tg_7DOMNode___isset(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -5077,7 +4937,6 @@ this_ => rsi
 TypedValue* th_7DOMNode___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP9c_DOMNode12t___destructEv");
 
 TypedValue* tg_7DOMNode___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -5101,78 +4960,16 @@ TypedValue* tg_7DOMNode___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_DOMAttr_Instance : public c_DOMAttr {
-public:
-  c_DOMAttr_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_DOMAttr));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_DOMAttr) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_DOMAttr_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_DOMAttr_Instance *this_ = (c_DOMAttr_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_DOMAttr) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_DOMAttr::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_DOMAttr::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_DOMAttr::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_DOMAttr::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_DOMAttr_Instance(HPHP::VM::Class* cls) {
-  return c_DOMAttr_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_DOMAttr) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_DOMAttr(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -5208,7 +5005,6 @@ TypedValue* tg1_7DOMAttr___construct(TypedValue* rv, HPHP::VM::ActRec* ar, long 
 }
 
 TypedValue* tg_7DOMAttr___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -5241,7 +5037,7 @@ TypedValue* tg_7DOMAttr___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -5255,7 +5051,6 @@ this_ => rdi
 bool th_7DOMAttr_isId(ObjectData* this_) asm("_ZN4HPHP9c_DOMAttr6t_isidEv");
 
 TypedValue* tg_7DOMAttr_isId(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -5280,7 +5075,7 @@ TypedValue* tg_7DOMAttr_isId(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -5296,7 +5091,6 @@ name => rdx
 TypedValue* th_7DOMAttr___get(TypedValue* _rv, ObjectData* this_, TypedValue* name) asm("_ZN4HPHP9c_DOMAttr7t___getENS_7VariantE");
 
 TypedValue* tg_7DOMAttr___get(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -5320,7 +5114,7 @@ TypedValue* tg_7DOMAttr___get(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -5337,7 +5131,6 @@ value => rcx
 TypedValue* th_7DOMAttr___set(TypedValue* _rv, ObjectData* this_, TypedValue* name, TypedValue* value) asm("_ZN4HPHP9c_DOMAttr7t___setENS_7VariantES1_");
 
 TypedValue* tg_7DOMAttr___set(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -5361,7 +5154,7 @@ TypedValue* tg_7DOMAttr___set(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -5376,7 +5169,6 @@ name => rsi
 bool th_7DOMAttr___isset(ObjectData* this_, TypedValue* name) asm("_ZN4HPHP9c_DOMAttr9t___issetENS_7VariantE");
 
 TypedValue* tg_7DOMAttr___isset(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -5401,7 +5193,7 @@ TypedValue* tg_7DOMAttr___isset(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -5416,7 +5208,6 @@ this_ => rsi
 TypedValue* th_7DOMAttr___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP9c_DOMAttr12t___destructEv");
 
 TypedValue* tg_7DOMAttr___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -5440,78 +5231,16 @@ TypedValue* tg_7DOMAttr___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_DOMCharacterData_Instance : public c_DOMCharacterData {
-public:
-  c_DOMCharacterData_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_DOMCharacterData));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_DOMCharacterData) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_DOMCharacterData_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_DOMCharacterData_Instance *this_ = (c_DOMCharacterData_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_DOMCharacterData) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_DOMCharacterData::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_DOMCharacterData::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_DOMCharacterData::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_DOMCharacterData::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_DOMCharacterData_Instance(HPHP::VM::Class* cls) {
-  return c_DOMCharacterData_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_DOMCharacterData) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_DOMCharacterData(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -5524,7 +5253,6 @@ this_ => rdi
 void th_16DOMCharacterData___construct(ObjectData* this_) asm("_ZN4HPHP18c_DOMCharacterData13t___constructEv");
 
 TypedValue* tg_16DOMCharacterData___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -5550,7 +5278,7 @@ TypedValue* tg_16DOMCharacterData___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -5575,7 +5303,6 @@ TypedValue* tg1_16DOMCharacterData_appendData(TypedValue* rv, HPHP::VM::ActRec* 
 }
 
 TypedValue* tg_16DOMCharacterData_appendData(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -5607,7 +5334,7 @@ TypedValue* tg_16DOMCharacterData_appendData(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -5638,7 +5365,6 @@ TypedValue* tg1_16DOMCharacterData_deleteData(TypedValue* rv, HPHP::VM::ActRec* 
 }
 
 TypedValue* tg_16DOMCharacterData_deleteData(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -5670,7 +5396,7 @@ TypedValue* tg_16DOMCharacterData_deleteData(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -5701,7 +5427,6 @@ TypedValue* tg1_16DOMCharacterData_insertData(TypedValue* rv, HPHP::VM::ActRec* 
 }
 
 TypedValue* tg_16DOMCharacterData_insertData(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -5733,7 +5458,7 @@ TypedValue* tg_16DOMCharacterData_insertData(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -5768,7 +5493,6 @@ TypedValue* tg1_16DOMCharacterData_replaceData(TypedValue* rv, HPHP::VM::ActRec*
 }
 
 TypedValue* tg_16DOMCharacterData_replaceData(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -5800,7 +5524,7 @@ TypedValue* tg_16DOMCharacterData_replaceData(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -5833,7 +5557,6 @@ TypedValue* tg1_16DOMCharacterData_substringData(TypedValue* rv, HPHP::VM::ActRe
 }
 
 TypedValue* tg_16DOMCharacterData_substringData(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -5866,7 +5589,7 @@ TypedValue* tg_16DOMCharacterData_substringData(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -5882,7 +5605,6 @@ name => rdx
 TypedValue* th_16DOMCharacterData___get(TypedValue* _rv, ObjectData* this_, TypedValue* name) asm("_ZN4HPHP18c_DOMCharacterData7t___getENS_7VariantE");
 
 TypedValue* tg_16DOMCharacterData___get(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -5906,7 +5628,7 @@ TypedValue* tg_16DOMCharacterData___get(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -5923,7 +5645,6 @@ value => rcx
 TypedValue* th_16DOMCharacterData___set(TypedValue* _rv, ObjectData* this_, TypedValue* name, TypedValue* value) asm("_ZN4HPHP18c_DOMCharacterData7t___setENS_7VariantES1_");
 
 TypedValue* tg_16DOMCharacterData___set(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -5947,7 +5668,7 @@ TypedValue* tg_16DOMCharacterData___set(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -5962,7 +5683,6 @@ name => rsi
 bool th_16DOMCharacterData___isset(ObjectData* this_, TypedValue* name) asm("_ZN4HPHP18c_DOMCharacterData9t___issetENS_7VariantE");
 
 TypedValue* tg_16DOMCharacterData___isset(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -5987,7 +5707,7 @@ TypedValue* tg_16DOMCharacterData___isset(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -6002,7 +5722,6 @@ this_ => rsi
 TypedValue* th_16DOMCharacterData___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP18c_DOMCharacterData12t___destructEv");
 
 TypedValue* tg_16DOMCharacterData___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -6026,78 +5745,16 @@ TypedValue* tg_16DOMCharacterData___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_DOMComment_Instance : public c_DOMComment {
-public:
-  c_DOMComment_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_DOMComment));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_DOMComment) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_DOMComment_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_DOMComment_Instance *this_ = (c_DOMComment_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_DOMComment) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_DOMComment::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_DOMComment::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_DOMComment::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_DOMComment::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_DOMComment_Instance(HPHP::VM::Class* cls) {
-  return c_DOMComment_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_DOMComment) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_DOMComment(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -6122,7 +5779,6 @@ TypedValue* tg1_10DOMComment___construct(TypedValue* rv, HPHP::VM::ActRec* ar, l
 }
 
 TypedValue* tg_10DOMComment___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -6155,7 +5811,7 @@ TypedValue* tg_10DOMComment___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -6170,7 +5826,6 @@ this_ => rsi
 TypedValue* th_10DOMComment___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP12c_DOMComment12t___destructEv");
 
 TypedValue* tg_10DOMComment___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -6194,78 +5849,16 @@ TypedValue* tg_10DOMComment___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_DOMText_Instance : public c_DOMText {
-public:
-  c_DOMText_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_DOMText));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_DOMText) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_DOMText_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_DOMText_Instance *this_ = (c_DOMText_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_DOMText) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_DOMText::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_DOMText::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_DOMText::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_DOMText::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_DOMText_Instance(HPHP::VM::Class* cls) {
-  return c_DOMText_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_DOMText) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_DOMText(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -6290,7 +5883,6 @@ TypedValue* tg1_7DOMText___construct(TypedValue* rv, HPHP::VM::ActRec* ar, long 
 }
 
 TypedValue* tg_7DOMText___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -6323,7 +5915,7 @@ TypedValue* tg_7DOMText___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -6337,7 +5929,6 @@ this_ => rdi
 bool th_7DOMText_isWhitespaceInElementContent(ObjectData* this_) asm("_ZN4HPHP9c_DOMText30t_iswhitespaceinelementcontentEv");
 
 TypedValue* tg_7DOMText_isWhitespaceInElementContent(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -6362,7 +5953,7 @@ TypedValue* tg_7DOMText_isWhitespaceInElementContent(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -6387,7 +5978,6 @@ TypedValue* tg1_7DOMText_splitText(TypedValue* rv, HPHP::VM::ActRec* ar, long lo
 }
 
 TypedValue* tg_7DOMText_splitText(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -6418,7 +6008,7 @@ TypedValue* tg_7DOMText_splitText(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -6434,7 +6024,6 @@ name => rdx
 TypedValue* th_7DOMText___get(TypedValue* _rv, ObjectData* this_, TypedValue* name) asm("_ZN4HPHP9c_DOMText7t___getENS_7VariantE");
 
 TypedValue* tg_7DOMText___get(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -6458,7 +6047,7 @@ TypedValue* tg_7DOMText___get(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -6475,7 +6064,6 @@ value => rcx
 TypedValue* th_7DOMText___set(TypedValue* _rv, ObjectData* this_, TypedValue* name, TypedValue* value) asm("_ZN4HPHP9c_DOMText7t___setENS_7VariantES1_");
 
 TypedValue* tg_7DOMText___set(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -6499,7 +6087,7 @@ TypedValue* tg_7DOMText___set(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -6514,7 +6102,6 @@ name => rsi
 bool th_7DOMText___isset(ObjectData* this_, TypedValue* name) asm("_ZN4HPHP9c_DOMText9t___issetENS_7VariantE");
 
 TypedValue* tg_7DOMText___isset(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -6539,7 +6126,7 @@ TypedValue* tg_7DOMText___isset(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -6554,7 +6141,6 @@ this_ => rsi
 TypedValue* th_7DOMText___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP9c_DOMText12t___destructEv");
 
 TypedValue* tg_7DOMText___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -6578,78 +6164,16 @@ TypedValue* tg_7DOMText___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_DOMCDATASection_Instance : public c_DOMCDATASection {
-public:
-  c_DOMCDATASection_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_DOMCDATASection));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_DOMCDATASection) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_DOMCDATASection_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_DOMCDATASection_Instance *this_ = (c_DOMCDATASection_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_DOMCDATASection) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_DOMCDATASection::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_DOMCDATASection::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_DOMCDATASection::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_DOMCDATASection::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_DOMCDATASection_Instance(HPHP::VM::Class* cls) {
-  return c_DOMCDATASection_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_DOMCDATASection) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_DOMCDATASection(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -6674,7 +6198,6 @@ TypedValue* tg1_15DOMCDATASection___construct(TypedValue* rv, HPHP::VM::ActRec* 
 }
 
 TypedValue* tg_15DOMCDATASection___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -6707,7 +6230,7 @@ TypedValue* tg_15DOMCDATASection___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -6722,7 +6245,6 @@ this_ => rsi
 TypedValue* th_15DOMCDATASection___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP17c_DOMCDATASection12t___destructEv");
 
 TypedValue* tg_15DOMCDATASection___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -6746,78 +6268,16 @@ TypedValue* tg_15DOMCDATASection___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_DOMDocument_Instance : public c_DOMDocument {
-public:
-  c_DOMDocument_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_DOMDocument));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_DOMDocument) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_DOMDocument_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_DOMDocument_Instance *this_ = (c_DOMDocument_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_DOMDocument) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_DOMDocument::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_DOMDocument::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_DOMDocument::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_DOMDocument::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_DOMDocument_Instance(HPHP::VM::Class* cls) {
-  return c_DOMDocument_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_DOMDocument) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_DOMDocument(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -6854,7 +6314,6 @@ TypedValue* tg1_11DOMDocument___construct(TypedValue* rv, HPHP::VM::ActRec* ar, 
 }
 
 TypedValue* tg_11DOMDocument___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -6887,7 +6346,7 @@ TypedValue* tg_11DOMDocument___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -6912,7 +6371,6 @@ TypedValue* tg1_11DOMDocument_createAttribute(TypedValue* rv, HPHP::VM::ActRec* 
 }
 
 TypedValue* tg_11DOMDocument_createAttribute(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -6943,7 +6401,7 @@ TypedValue* tg_11DOMDocument_createAttribute(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -6974,7 +6432,6 @@ TypedValue* tg1_11DOMDocument_createAttributens(TypedValue* rv, HPHP::VM::ActRec
 }
 
 TypedValue* tg_11DOMDocument_createAttributens(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -7005,7 +6462,7 @@ TypedValue* tg_11DOMDocument_createAttributens(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -7030,7 +6487,6 @@ TypedValue* tg1_11DOMDocument_createCDATASection(TypedValue* rv, HPHP::VM::ActRe
 }
 
 TypedValue* tg_11DOMDocument_createCDATASection(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -7061,7 +6517,7 @@ TypedValue* tg_11DOMDocument_createCDATASection(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -7086,7 +6542,6 @@ TypedValue* tg1_11DOMDocument_createComment(TypedValue* rv, HPHP::VM::ActRec* ar
 }
 
 TypedValue* tg_11DOMDocument_createComment(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -7117,7 +6572,7 @@ TypedValue* tg_11DOMDocument_createComment(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -7132,7 +6587,6 @@ this_ => rsi
 TypedValue* th_11DOMDocument_createDocumentFragment(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP13c_DOMDocument24t_createdocumentfragmentEv");
 
 TypedValue* tg_11DOMDocument_createDocumentFragment(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -7156,7 +6610,7 @@ TypedValue* tg_11DOMDocument_createDocumentFragment(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -7192,7 +6646,6 @@ TypedValue* tg1_11DOMDocument_createElement(TypedValue* rv, HPHP::VM::ActRec* ar
 }
 
 TypedValue* tg_11DOMDocument_createElement(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -7223,7 +6676,7 @@ TypedValue* tg_11DOMDocument_createElement(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -7263,7 +6716,6 @@ TypedValue* tg1_11DOMDocument_createElementNS(TypedValue* rv, HPHP::VM::ActRec* 
 }
 
 TypedValue* tg_11DOMDocument_createElementNS(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -7294,7 +6746,7 @@ TypedValue* tg_11DOMDocument_createElementNS(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -7319,7 +6771,6 @@ TypedValue* tg1_11DOMDocument_createEntityReference(TypedValue* rv, HPHP::VM::Ac
 }
 
 TypedValue* tg_11DOMDocument_createEntityReference(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -7350,7 +6801,7 @@ TypedValue* tg_11DOMDocument_createEntityReference(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -7386,7 +6837,6 @@ TypedValue* tg1_11DOMDocument_createProcessingInstruction(TypedValue* rv, HPHP::
 }
 
 TypedValue* tg_11DOMDocument_createProcessingInstruction(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -7417,7 +6867,7 @@ TypedValue* tg_11DOMDocument_createProcessingInstruction(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -7442,7 +6892,6 @@ TypedValue* tg1_11DOMDocument_createTextNode(TypedValue* rv, HPHP::VM::ActRec* a
 }
 
 TypedValue* tg_11DOMDocument_createTextNode(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -7473,7 +6922,7 @@ TypedValue* tg_11DOMDocument_createTextNode(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -7498,7 +6947,6 @@ TypedValue* tg1_11DOMDocument_getElementById(TypedValue* rv, HPHP::VM::ActRec* a
 }
 
 TypedValue* tg_11DOMDocument_getElementById(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -7529,7 +6977,7 @@ TypedValue* tg_11DOMDocument_getElementById(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -7554,7 +7002,6 @@ TypedValue* tg1_11DOMDocument_getElementsByTagName(TypedValue* rv, HPHP::VM::Act
 }
 
 TypedValue* tg_11DOMDocument_getElementsByTagName(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -7585,7 +7032,7 @@ TypedValue* tg_11DOMDocument_getElementsByTagName(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -7616,7 +7063,6 @@ TypedValue* tg1_11DOMDocument_getElementsByTagNameNS(TypedValue* rv, HPHP::VM::A
 }
 
 TypedValue* tg_11DOMDocument_getElementsByTagNameNS(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -7647,7 +7093,7 @@ TypedValue* tg_11DOMDocument_getElementsByTagNameNS(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -7683,7 +7129,6 @@ TypedValue* tg1_11DOMDocument_importNode(TypedValue* rv, HPHP::VM::ActRec* ar, l
 }
 
 TypedValue* tg_11DOMDocument_importNode(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -7714,7 +7159,7 @@ TypedValue* tg_11DOMDocument_importNode(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -7750,7 +7195,6 @@ TypedValue* tg1_11DOMDocument_load(TypedValue* rv, HPHP::VM::ActRec* ar, long lo
 }
 
 TypedValue* tg_11DOMDocument_load(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -7781,7 +7225,7 @@ TypedValue* tg_11DOMDocument_load(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -7806,7 +7250,6 @@ TypedValue* tg1_11DOMDocument_loadHTML(TypedValue* rv, HPHP::VM::ActRec* ar, lon
 }
 
 TypedValue* tg_11DOMDocument_loadHTML(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -7837,7 +7280,7 @@ TypedValue* tg_11DOMDocument_loadHTML(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -7862,7 +7305,6 @@ TypedValue* tg1_11DOMDocument_loadHTMLFile(TypedValue* rv, HPHP::VM::ActRec* ar,
 }
 
 TypedValue* tg_11DOMDocument_loadHTMLFile(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -7893,7 +7335,7 @@ TypedValue* tg_11DOMDocument_loadHTMLFile(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -7929,7 +7371,6 @@ TypedValue* tg1_11DOMDocument_loadXML(TypedValue* rv, HPHP::VM::ActRec* ar, long
 }
 
 TypedValue* tg_11DOMDocument_loadXML(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -7960,7 +7401,7 @@ TypedValue* tg_11DOMDocument_loadXML(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -7973,7 +7414,6 @@ this_ => rdi
 void th_11DOMDocument_normalizeDocument(ObjectData* this_) asm("_ZN4HPHP13c_DOMDocument19t_normalizedocumentEv");
 
 TypedValue* tg_11DOMDocument_normalizeDocument(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -7999,7 +7439,7 @@ TypedValue* tg_11DOMDocument_normalizeDocument(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -8030,7 +7470,6 @@ TypedValue* tg1_11DOMDocument_registerNodeClass(TypedValue* rv, HPHP::VM::ActRec
 }
 
 TypedValue* tg_11DOMDocument_registerNodeClass(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -8062,7 +7501,7 @@ TypedValue* tg_11DOMDocument_registerNodeClass(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -8087,7 +7526,6 @@ TypedValue* tg1_11DOMDocument_relaxNGValidate(TypedValue* rv, HPHP::VM::ActRec* 
 }
 
 TypedValue* tg_11DOMDocument_relaxNGValidate(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -8119,7 +7557,7 @@ TypedValue* tg_11DOMDocument_relaxNGValidate(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -8144,7 +7582,6 @@ TypedValue* tg1_11DOMDocument_relaxNGValidateSource(TypedValue* rv, HPHP::VM::Ac
 }
 
 TypedValue* tg_11DOMDocument_relaxNGValidateSource(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -8176,7 +7613,7 @@ TypedValue* tg_11DOMDocument_relaxNGValidateSource(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -8212,7 +7649,6 @@ TypedValue* tg1_11DOMDocument_save(TypedValue* rv, HPHP::VM::ActRec* ar, long lo
 }
 
 TypedValue* tg_11DOMDocument_save(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -8243,7 +7679,7 @@ TypedValue* tg_11DOMDocument_save(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -8258,7 +7694,6 @@ this_ => rsi
 TypedValue* th_11DOMDocument_saveHTML(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP13c_DOMDocument10t_savehtmlEv");
 
 TypedValue* tg_11DOMDocument_saveHTML(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -8282,7 +7717,7 @@ TypedValue* tg_11DOMDocument_saveHTML(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -8307,7 +7742,6 @@ TypedValue* tg1_11DOMDocument_saveHTMLFile(TypedValue* rv, HPHP::VM::ActRec* ar,
 }
 
 TypedValue* tg_11DOMDocument_saveHTMLFile(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -8338,7 +7772,7 @@ TypedValue* tg_11DOMDocument_saveHTMLFile(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -8375,7 +7809,6 @@ TypedValue* tg1_11DOMDocument_saveXML(TypedValue* rv, HPHP::VM::ActRec* ar, long
 }
 
 TypedValue* tg_11DOMDocument_saveXML(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -8406,7 +7839,7 @@ TypedValue* tg_11DOMDocument_saveXML(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -8431,7 +7864,6 @@ TypedValue* tg1_11DOMDocument_schemaValidate(TypedValue* rv, HPHP::VM::ActRec* a
 }
 
 TypedValue* tg_11DOMDocument_schemaValidate(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -8463,7 +7895,7 @@ TypedValue* tg_11DOMDocument_schemaValidate(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -8488,7 +7920,6 @@ TypedValue* tg1_11DOMDocument_schemaValidateSource(TypedValue* rv, HPHP::VM::Act
 }
 
 TypedValue* tg_11DOMDocument_schemaValidateSource(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -8520,7 +7951,7 @@ TypedValue* tg_11DOMDocument_schemaValidateSource(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -8534,7 +7965,6 @@ this_ => rdi
 bool th_11DOMDocument_validate(ObjectData* this_) asm("_ZN4HPHP13c_DOMDocument10t_validateEv");
 
 TypedValue* tg_11DOMDocument_validate(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -8559,7 +7989,7 @@ TypedValue* tg_11DOMDocument_validate(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -8584,7 +8014,6 @@ TypedValue* tg1_11DOMDocument_xinclude(TypedValue* rv, HPHP::VM::ActRec* ar, lon
 }
 
 TypedValue* tg_11DOMDocument_xinclude(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -8615,7 +8044,7 @@ TypedValue* tg_11DOMDocument_xinclude(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -8631,7 +8060,6 @@ name => rdx
 TypedValue* th_11DOMDocument___get(TypedValue* _rv, ObjectData* this_, TypedValue* name) asm("_ZN4HPHP13c_DOMDocument7t___getENS_7VariantE");
 
 TypedValue* tg_11DOMDocument___get(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -8655,7 +8083,7 @@ TypedValue* tg_11DOMDocument___get(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -8672,7 +8100,6 @@ value => rcx
 TypedValue* th_11DOMDocument___set(TypedValue* _rv, ObjectData* this_, TypedValue* name, TypedValue* value) asm("_ZN4HPHP13c_DOMDocument7t___setENS_7VariantES1_");
 
 TypedValue* tg_11DOMDocument___set(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -8696,7 +8123,7 @@ TypedValue* tg_11DOMDocument___set(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -8711,7 +8138,6 @@ name => rsi
 bool th_11DOMDocument___isset(ObjectData* this_, TypedValue* name) asm("_ZN4HPHP13c_DOMDocument9t___issetENS_7VariantE");
 
 TypedValue* tg_11DOMDocument___isset(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -8736,7 +8162,7 @@ TypedValue* tg_11DOMDocument___isset(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -8751,7 +8177,6 @@ this_ => rsi
 TypedValue* th_11DOMDocument___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP13c_DOMDocument12t___destructEv");
 
 TypedValue* tg_11DOMDocument___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -8775,78 +8200,16 @@ TypedValue* tg_11DOMDocument___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_DOMDocumentFragment_Instance : public c_DOMDocumentFragment {
-public:
-  c_DOMDocumentFragment_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_DOMDocumentFragment));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_DOMDocumentFragment) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_DOMDocumentFragment_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_DOMDocumentFragment_Instance *this_ = (c_DOMDocumentFragment_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_DOMDocumentFragment) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_DOMDocumentFragment::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_DOMDocumentFragment::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_DOMDocumentFragment::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_DOMDocumentFragment::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_DOMDocumentFragment_Instance(HPHP::VM::Class* cls) {
-  return c_DOMDocumentFragment_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_DOMDocumentFragment) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_DOMDocumentFragment(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -8859,7 +8222,6 @@ this_ => rdi
 void th_19DOMDocumentFragment___construct(ObjectData* this_) asm("_ZN4HPHP21c_DOMDocumentFragment13t___constructEv");
 
 TypedValue* tg_19DOMDocumentFragment___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -8885,7 +8247,7 @@ TypedValue* tg_19DOMDocumentFragment___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -8910,7 +8272,6 @@ TypedValue* tg1_19DOMDocumentFragment_appendXML(TypedValue* rv, HPHP::VM::ActRec
 }
 
 TypedValue* tg_19DOMDocumentFragment_appendXML(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -8942,7 +8303,7 @@ TypedValue* tg_19DOMDocumentFragment_appendXML(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -8957,7 +8318,6 @@ this_ => rsi
 TypedValue* th_19DOMDocumentFragment___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP21c_DOMDocumentFragment12t___destructEv");
 
 TypedValue* tg_19DOMDocumentFragment___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -8981,78 +8341,16 @@ TypedValue* tg_19DOMDocumentFragment___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_DOMDocumentType_Instance : public c_DOMDocumentType {
-public:
-  c_DOMDocumentType_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_DOMDocumentType));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_DOMDocumentType) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_DOMDocumentType_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_DOMDocumentType_Instance *this_ = (c_DOMDocumentType_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_DOMDocumentType) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_DOMDocumentType::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_DOMDocumentType::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_DOMDocumentType::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_DOMDocumentType::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_DOMDocumentType_Instance(HPHP::VM::Class* cls) {
-  return c_DOMDocumentType_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_DOMDocumentType) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_DOMDocumentType(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -9065,7 +8363,6 @@ this_ => rdi
 void th_15DOMDocumentType___construct(ObjectData* this_) asm("_ZN4HPHP17c_DOMDocumentType13t___constructEv");
 
 TypedValue* tg_15DOMDocumentType___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -9091,7 +8388,7 @@ TypedValue* tg_15DOMDocumentType___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -9107,7 +8404,6 @@ name => rdx
 TypedValue* th_15DOMDocumentType___get(TypedValue* _rv, ObjectData* this_, TypedValue* name) asm("_ZN4HPHP17c_DOMDocumentType7t___getENS_7VariantE");
 
 TypedValue* tg_15DOMDocumentType___get(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -9131,7 +8427,7 @@ TypedValue* tg_15DOMDocumentType___get(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -9148,7 +8444,6 @@ value => rcx
 TypedValue* th_15DOMDocumentType___set(TypedValue* _rv, ObjectData* this_, TypedValue* name, TypedValue* value) asm("_ZN4HPHP17c_DOMDocumentType7t___setENS_7VariantES1_");
 
 TypedValue* tg_15DOMDocumentType___set(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -9172,7 +8467,7 @@ TypedValue* tg_15DOMDocumentType___set(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -9187,7 +8482,6 @@ name => rsi
 bool th_15DOMDocumentType___isset(ObjectData* this_, TypedValue* name) asm("_ZN4HPHP17c_DOMDocumentType9t___issetENS_7VariantE");
 
 TypedValue* tg_15DOMDocumentType___isset(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -9212,7 +8506,7 @@ TypedValue* tg_15DOMDocumentType___isset(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -9227,7 +8521,6 @@ this_ => rsi
 TypedValue* th_15DOMDocumentType___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP17c_DOMDocumentType12t___destructEv");
 
 TypedValue* tg_15DOMDocumentType___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -9251,78 +8544,16 @@ TypedValue* tg_15DOMDocumentType___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_DOMElement_Instance : public c_DOMElement {
-public:
-  c_DOMElement_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_DOMElement));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_DOMElement) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_DOMElement_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_DOMElement_Instance *this_ = (c_DOMElement_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_DOMElement) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_DOMElement::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_DOMElement::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_DOMElement::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_DOMElement::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_DOMElement_Instance(HPHP::VM::Class* cls) {
-  return c_DOMElement_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_DOMElement) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_DOMElement(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -9363,7 +8594,6 @@ TypedValue* tg1_10DOMElement___construct(TypedValue* rv, HPHP::VM::ActRec* ar, l
 }
 
 TypedValue* tg_10DOMElement___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -9396,7 +8626,7 @@ TypedValue* tg_10DOMElement___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -9423,7 +8653,6 @@ TypedValue* tg1_10DOMElement_getAttribute(TypedValue* rv, HPHP::VM::ActRec* ar, 
 }
 
 TypedValue* tg_10DOMElement_getAttribute(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -9456,7 +8685,7 @@ TypedValue* tg_10DOMElement_getAttribute(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -9481,7 +8710,6 @@ TypedValue* tg1_10DOMElement_getAttributeNode(TypedValue* rv, HPHP::VM::ActRec* 
 }
 
 TypedValue* tg_10DOMElement_getAttributeNode(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -9512,7 +8740,7 @@ TypedValue* tg_10DOMElement_getAttributeNode(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -9545,7 +8773,6 @@ TypedValue* tg1_10DOMElement_getAttributeNodeNS(TypedValue* rv, HPHP::VM::ActRec
 }
 
 TypedValue* tg_10DOMElement_getAttributeNodeNS(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -9578,7 +8805,7 @@ TypedValue* tg_10DOMElement_getAttributeNodeNS(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -9611,7 +8838,6 @@ TypedValue* tg1_10DOMElement_getAttributeNS(TypedValue* rv, HPHP::VM::ActRec* ar
 }
 
 TypedValue* tg_10DOMElement_getAttributeNS(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -9644,7 +8870,7 @@ TypedValue* tg_10DOMElement_getAttributeNS(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -9671,7 +8897,6 @@ TypedValue* tg1_10DOMElement_getElementsByTagName(TypedValue* rv, HPHP::VM::ActR
 }
 
 TypedValue* tg_10DOMElement_getElementsByTagName(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -9704,7 +8929,7 @@ TypedValue* tg_10DOMElement_getElementsByTagName(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -9737,7 +8962,6 @@ TypedValue* tg1_10DOMElement_getElementsByTagNameNS(TypedValue* rv, HPHP::VM::Ac
 }
 
 TypedValue* tg_10DOMElement_getElementsByTagNameNS(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -9770,7 +8994,7 @@ TypedValue* tg_10DOMElement_getElementsByTagNameNS(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -9795,7 +9019,6 @@ TypedValue* tg1_10DOMElement_hasAttribute(TypedValue* rv, HPHP::VM::ActRec* ar, 
 }
 
 TypedValue* tg_10DOMElement_hasAttribute(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -9827,7 +9050,7 @@ TypedValue* tg_10DOMElement_hasAttribute(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -9858,7 +9081,6 @@ TypedValue* tg1_10DOMElement_hasAttributeNS(TypedValue* rv, HPHP::VM::ActRec* ar
 }
 
 TypedValue* tg_10DOMElement_hasAttributeNS(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -9890,7 +9112,7 @@ TypedValue* tg_10DOMElement_hasAttributeNS(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -9915,7 +9137,6 @@ TypedValue* tg1_10DOMElement_removeAttribute(TypedValue* rv, HPHP::VM::ActRec* a
 }
 
 TypedValue* tg_10DOMElement_removeAttribute(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -9947,7 +9168,7 @@ TypedValue* tg_10DOMElement_removeAttribute(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -9972,7 +9193,6 @@ TypedValue* tg1_10DOMElement_removeAttributeNode(TypedValue* rv, HPHP::VM::ActRe
 }
 
 TypedValue* tg_10DOMElement_removeAttributeNode(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -10003,7 +9223,7 @@ TypedValue* tg_10DOMElement_removeAttributeNode(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -10034,7 +9254,6 @@ TypedValue* tg1_10DOMElement_removeAttributeNS(TypedValue* rv, HPHP::VM::ActRec*
 }
 
 TypedValue* tg_10DOMElement_removeAttributeNS(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -10065,7 +9284,7 @@ TypedValue* tg_10DOMElement_removeAttributeNS(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -10096,7 +9315,6 @@ TypedValue* tg1_10DOMElement_setAttribute(TypedValue* rv, HPHP::VM::ActRec* ar, 
 }
 
 TypedValue* tg_10DOMElement_setAttribute(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -10127,7 +9345,7 @@ TypedValue* tg_10DOMElement_setAttribute(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -10152,7 +9370,6 @@ TypedValue* tg1_10DOMElement_setAttributeNode(TypedValue* rv, HPHP::VM::ActRec* 
 }
 
 TypedValue* tg_10DOMElement_setAttributeNode(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -10183,7 +9400,7 @@ TypedValue* tg_10DOMElement_setAttributeNode(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -10208,7 +9425,6 @@ TypedValue* tg1_10DOMElement_setAttributeNodeNS(TypedValue* rv, HPHP::VM::ActRec
 }
 
 TypedValue* tg_10DOMElement_setAttributeNodeNS(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -10239,7 +9455,7 @@ TypedValue* tg_10DOMElement_setAttributeNodeNS(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -10274,7 +9490,6 @@ TypedValue* tg1_10DOMElement_setAttributeNS(TypedValue* rv, HPHP::VM::ActRec* ar
 }
 
 TypedValue* tg_10DOMElement_setAttributeNS(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -10305,7 +9520,7 @@ TypedValue* tg_10DOMElement_setAttributeNS(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -10336,7 +9551,6 @@ TypedValue* tg1_10DOMElement_setIDAttribute(TypedValue* rv, HPHP::VM::ActRec* ar
 }
 
 TypedValue* tg_10DOMElement_setIDAttribute(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -10367,7 +9581,7 @@ TypedValue* tg_10DOMElement_setIDAttribute(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -10398,7 +9612,6 @@ TypedValue* tg1_10DOMElement_setIDAttributeNode(TypedValue* rv, HPHP::VM::ActRec
 }
 
 TypedValue* tg_10DOMElement_setIDAttributeNode(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -10429,7 +9642,7 @@ TypedValue* tg_10DOMElement_setIDAttributeNode(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -10464,7 +9677,6 @@ TypedValue* tg1_10DOMElement_setIDAttributeNS(TypedValue* rv, HPHP::VM::ActRec* 
 }
 
 TypedValue* tg_10DOMElement_setIDAttributeNS(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -10495,7 +9707,7 @@ TypedValue* tg_10DOMElement_setIDAttributeNS(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -10511,7 +9723,6 @@ name => rdx
 TypedValue* th_10DOMElement___get(TypedValue* _rv, ObjectData* this_, TypedValue* name) asm("_ZN4HPHP12c_DOMElement7t___getENS_7VariantE");
 
 TypedValue* tg_10DOMElement___get(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -10535,7 +9746,7 @@ TypedValue* tg_10DOMElement___get(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -10552,7 +9763,6 @@ value => rcx
 TypedValue* th_10DOMElement___set(TypedValue* _rv, ObjectData* this_, TypedValue* name, TypedValue* value) asm("_ZN4HPHP12c_DOMElement7t___setENS_7VariantES1_");
 
 TypedValue* tg_10DOMElement___set(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -10576,7 +9786,7 @@ TypedValue* tg_10DOMElement___set(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -10591,7 +9801,6 @@ name => rsi
 bool th_10DOMElement___isset(ObjectData* this_, TypedValue* name) asm("_ZN4HPHP12c_DOMElement9t___issetENS_7VariantE");
 
 TypedValue* tg_10DOMElement___isset(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -10616,7 +9825,7 @@ TypedValue* tg_10DOMElement___isset(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -10631,7 +9840,6 @@ this_ => rsi
 TypedValue* th_10DOMElement___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP12c_DOMElement12t___destructEv");
 
 TypedValue* tg_10DOMElement___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -10655,78 +9863,16 @@ TypedValue* tg_10DOMElement___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_DOMEntity_Instance : public c_DOMEntity {
-public:
-  c_DOMEntity_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_DOMEntity));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_DOMEntity) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_DOMEntity_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_DOMEntity_Instance *this_ = (c_DOMEntity_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_DOMEntity) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_DOMEntity::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_DOMEntity::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_DOMEntity::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_DOMEntity::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_DOMEntity_Instance(HPHP::VM::Class* cls) {
-  return c_DOMEntity_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_DOMEntity) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_DOMEntity(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -10739,7 +9885,6 @@ this_ => rdi
 void th_9DOMEntity___construct(ObjectData* this_) asm("_ZN4HPHP11c_DOMEntity13t___constructEv");
 
 TypedValue* tg_9DOMEntity___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -10765,7 +9910,7 @@ TypedValue* tg_9DOMEntity___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -10781,7 +9926,6 @@ name => rdx
 TypedValue* th_9DOMEntity___get(TypedValue* _rv, ObjectData* this_, TypedValue* name) asm("_ZN4HPHP11c_DOMEntity7t___getENS_7VariantE");
 
 TypedValue* tg_9DOMEntity___get(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -10805,7 +9949,7 @@ TypedValue* tg_9DOMEntity___get(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -10822,7 +9966,6 @@ value => rcx
 TypedValue* th_9DOMEntity___set(TypedValue* _rv, ObjectData* this_, TypedValue* name, TypedValue* value) asm("_ZN4HPHP11c_DOMEntity7t___setENS_7VariantES1_");
 
 TypedValue* tg_9DOMEntity___set(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -10846,7 +9989,7 @@ TypedValue* tg_9DOMEntity___set(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -10861,7 +10004,6 @@ name => rsi
 bool th_9DOMEntity___isset(ObjectData* this_, TypedValue* name) asm("_ZN4HPHP11c_DOMEntity9t___issetENS_7VariantE");
 
 TypedValue* tg_9DOMEntity___isset(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -10886,7 +10028,7 @@ TypedValue* tg_9DOMEntity___isset(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -10901,7 +10043,6 @@ this_ => rsi
 TypedValue* th_9DOMEntity___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP11c_DOMEntity12t___destructEv");
 
 TypedValue* tg_9DOMEntity___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -10925,78 +10066,16 @@ TypedValue* tg_9DOMEntity___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_DOMEntityReference_Instance : public c_DOMEntityReference {
-public:
-  c_DOMEntityReference_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_DOMEntityReference));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_DOMEntityReference) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_DOMEntityReference_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_DOMEntityReference_Instance *this_ = (c_DOMEntityReference_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_DOMEntityReference) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_DOMEntityReference::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_DOMEntityReference::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_DOMEntityReference::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_DOMEntityReference::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_DOMEntityReference_Instance(HPHP::VM::Class* cls) {
-  return c_DOMEntityReference_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_DOMEntityReference) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_DOMEntityReference(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -11021,7 +10100,6 @@ TypedValue* tg1_18DOMEntityReference___construct(TypedValue* rv, HPHP::VM::ActRe
 }
 
 TypedValue* tg_18DOMEntityReference___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -11054,7 +10132,7 @@ TypedValue* tg_18DOMEntityReference___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -11069,7 +10147,6 @@ this_ => rsi
 TypedValue* th_18DOMEntityReference___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP20c_DOMEntityReference12t___destructEv");
 
 TypedValue* tg_18DOMEntityReference___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -11093,78 +10170,16 @@ TypedValue* tg_18DOMEntityReference___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_DOMNotation_Instance : public c_DOMNotation {
-public:
-  c_DOMNotation_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_DOMNotation));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_DOMNotation) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_DOMNotation_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_DOMNotation_Instance *this_ = (c_DOMNotation_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_DOMNotation) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_DOMNotation::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_DOMNotation::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_DOMNotation::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_DOMNotation::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_DOMNotation_Instance(HPHP::VM::Class* cls) {
-  return c_DOMNotation_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_DOMNotation) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_DOMNotation(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -11177,7 +10192,6 @@ this_ => rdi
 void th_11DOMNotation___construct(ObjectData* this_) asm("_ZN4HPHP13c_DOMNotation13t___constructEv");
 
 TypedValue* tg_11DOMNotation___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -11203,7 +10217,7 @@ TypedValue* tg_11DOMNotation___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -11219,7 +10233,6 @@ name => rdx
 TypedValue* th_11DOMNotation___get(TypedValue* _rv, ObjectData* this_, TypedValue* name) asm("_ZN4HPHP13c_DOMNotation7t___getENS_7VariantE");
 
 TypedValue* tg_11DOMNotation___get(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -11243,7 +10256,7 @@ TypedValue* tg_11DOMNotation___get(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -11260,7 +10273,6 @@ value => rcx
 TypedValue* th_11DOMNotation___set(TypedValue* _rv, ObjectData* this_, TypedValue* name, TypedValue* value) asm("_ZN4HPHP13c_DOMNotation7t___setENS_7VariantES1_");
 
 TypedValue* tg_11DOMNotation___set(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -11284,7 +10296,7 @@ TypedValue* tg_11DOMNotation___set(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -11299,7 +10311,6 @@ name => rsi
 bool th_11DOMNotation___isset(ObjectData* this_, TypedValue* name) asm("_ZN4HPHP13c_DOMNotation9t___issetENS_7VariantE");
 
 TypedValue* tg_11DOMNotation___isset(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -11324,7 +10335,7 @@ TypedValue* tg_11DOMNotation___isset(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -11339,7 +10350,6 @@ this_ => rsi
 TypedValue* th_11DOMNotation___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP13c_DOMNotation12t___destructEv");
 
 TypedValue* tg_11DOMNotation___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -11363,78 +10373,16 @@ TypedValue* tg_11DOMNotation___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_DOMProcessingInstruction_Instance : public c_DOMProcessingInstruction {
-public:
-  c_DOMProcessingInstruction_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_DOMProcessingInstruction));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_DOMProcessingInstruction) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_DOMProcessingInstruction_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_DOMProcessingInstruction_Instance *this_ = (c_DOMProcessingInstruction_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_DOMProcessingInstruction) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_DOMProcessingInstruction::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_DOMProcessingInstruction::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_DOMProcessingInstruction::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_DOMProcessingInstruction::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_DOMProcessingInstruction_Instance(HPHP::VM::Class* cls) {
-  return c_DOMProcessingInstruction_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_DOMProcessingInstruction) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_DOMProcessingInstruction(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -11470,7 +10418,6 @@ TypedValue* tg1_24DOMProcessingInstruction___construct(TypedValue* rv, HPHP::VM:
 }
 
 TypedValue* tg_24DOMProcessingInstruction___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -11503,7 +10450,7 @@ TypedValue* tg_24DOMProcessingInstruction___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -11519,7 +10466,6 @@ name => rdx
 TypedValue* th_24DOMProcessingInstruction___get(TypedValue* _rv, ObjectData* this_, TypedValue* name) asm("_ZN4HPHP26c_DOMProcessingInstruction7t___getENS_7VariantE");
 
 TypedValue* tg_24DOMProcessingInstruction___get(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -11543,7 +10489,7 @@ TypedValue* tg_24DOMProcessingInstruction___get(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -11560,7 +10506,6 @@ value => rcx
 TypedValue* th_24DOMProcessingInstruction___set(TypedValue* _rv, ObjectData* this_, TypedValue* name, TypedValue* value) asm("_ZN4HPHP26c_DOMProcessingInstruction7t___setENS_7VariantES1_");
 
 TypedValue* tg_24DOMProcessingInstruction___set(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -11584,7 +10529,7 @@ TypedValue* tg_24DOMProcessingInstruction___set(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -11599,7 +10544,6 @@ name => rsi
 bool th_24DOMProcessingInstruction___isset(ObjectData* this_, TypedValue* name) asm("_ZN4HPHP26c_DOMProcessingInstruction9t___issetENS_7VariantE");
 
 TypedValue* tg_24DOMProcessingInstruction___isset(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -11624,7 +10568,7 @@ TypedValue* tg_24DOMProcessingInstruction___isset(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -11639,7 +10583,6 @@ this_ => rsi
 TypedValue* th_24DOMProcessingInstruction___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP26c_DOMProcessingInstruction12t___destructEv");
 
 TypedValue* tg_24DOMProcessingInstruction___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -11663,78 +10606,16 @@ TypedValue* tg_24DOMProcessingInstruction___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_DOMNodeIterator_Instance : public c_DOMNodeIterator {
-public:
-  c_DOMNodeIterator_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_DOMNodeIterator));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_DOMNodeIterator) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_DOMNodeIterator_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_DOMNodeIterator_Instance *this_ = (c_DOMNodeIterator_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_DOMNodeIterator) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_DOMNodeIterator::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_DOMNodeIterator::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_DOMNodeIterator::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_DOMNodeIterator::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_DOMNodeIterator_Instance(HPHP::VM::Class* cls) {
-  return c_DOMNodeIterator_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_DOMNodeIterator) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_DOMNodeIterator(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -11747,7 +10628,6 @@ this_ => rdi
 void th_15DOMNodeIterator___construct(ObjectData* this_) asm("_ZN4HPHP17c_DOMNodeIterator13t___constructEv");
 
 TypedValue* tg_15DOMNodeIterator___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -11773,7 +10653,7 @@ TypedValue* tg_15DOMNodeIterator___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -11788,7 +10668,6 @@ this_ => rsi
 TypedValue* th_15DOMNodeIterator_current(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP17c_DOMNodeIterator9t_currentEv");
 
 TypedValue* tg_15DOMNodeIterator_current(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -11812,7 +10691,7 @@ TypedValue* tg_15DOMNodeIterator_current(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -11827,7 +10706,6 @@ this_ => rsi
 TypedValue* th_15DOMNodeIterator_key(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP17c_DOMNodeIterator5t_keyEv");
 
 TypedValue* tg_15DOMNodeIterator_key(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -11851,7 +10729,7 @@ TypedValue* tg_15DOMNodeIterator_key(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -11866,7 +10744,6 @@ this_ => rsi
 TypedValue* th_15DOMNodeIterator_next(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP17c_DOMNodeIterator6t_nextEv");
 
 TypedValue* tg_15DOMNodeIterator_next(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -11890,7 +10767,7 @@ TypedValue* tg_15DOMNodeIterator_next(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -11905,7 +10782,6 @@ this_ => rsi
 TypedValue* th_15DOMNodeIterator_rewind(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP17c_DOMNodeIterator8t_rewindEv");
 
 TypedValue* tg_15DOMNodeIterator_rewind(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -11929,7 +10805,7 @@ TypedValue* tg_15DOMNodeIterator_rewind(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -11944,7 +10820,6 @@ this_ => rsi
 TypedValue* th_15DOMNodeIterator_valid(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP17c_DOMNodeIterator7t_validEv");
 
 TypedValue* tg_15DOMNodeIterator_valid(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -11968,7 +10843,7 @@ TypedValue* tg_15DOMNodeIterator_valid(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -11983,7 +10858,6 @@ this_ => rsi
 TypedValue* th_15DOMNodeIterator___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP17c_DOMNodeIterator12t___destructEv");
 
 TypedValue* tg_15DOMNodeIterator___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -12007,78 +10881,16 @@ TypedValue* tg_15DOMNodeIterator___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_DOMNamedNodeMap_Instance : public c_DOMNamedNodeMap {
-public:
-  c_DOMNamedNodeMap_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_DOMNamedNodeMap));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_DOMNamedNodeMap) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_DOMNamedNodeMap_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_DOMNamedNodeMap_Instance *this_ = (c_DOMNamedNodeMap_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_DOMNamedNodeMap) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_DOMNamedNodeMap::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_DOMNamedNodeMap::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_DOMNamedNodeMap::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_DOMNamedNodeMap::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_DOMNamedNodeMap_Instance(HPHP::VM::Class* cls) {
-  return c_DOMNamedNodeMap_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_DOMNamedNodeMap) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_DOMNamedNodeMap(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -12091,7 +10903,6 @@ this_ => rdi
 void th_15DOMNamedNodeMap___construct(ObjectData* this_) asm("_ZN4HPHP17c_DOMNamedNodeMap13t___constructEv");
 
 TypedValue* tg_15DOMNamedNodeMap___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -12117,7 +10928,7 @@ TypedValue* tg_15DOMNamedNodeMap___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -12142,7 +10953,6 @@ TypedValue* tg1_15DOMNamedNodeMap_getNamedItem(TypedValue* rv, HPHP::VM::ActRec*
 }
 
 TypedValue* tg_15DOMNamedNodeMap_getNamedItem(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -12173,7 +10983,7 @@ TypedValue* tg_15DOMNamedNodeMap_getNamedItem(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -12204,7 +11014,6 @@ TypedValue* tg1_15DOMNamedNodeMap_getNamedItemNS(TypedValue* rv, HPHP::VM::ActRe
 }
 
 TypedValue* tg_15DOMNamedNodeMap_getNamedItemNS(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -12235,7 +11044,7 @@ TypedValue* tg_15DOMNamedNodeMap_getNamedItemNS(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -12260,7 +11069,6 @@ TypedValue* tg1_15DOMNamedNodeMap_item(TypedValue* rv, HPHP::VM::ActRec* ar, lon
 }
 
 TypedValue* tg_15DOMNamedNodeMap_item(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -12291,7 +11099,7 @@ TypedValue* tg_15DOMNamedNodeMap_item(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -12307,7 +11115,6 @@ name => rdx
 TypedValue* th_15DOMNamedNodeMap___get(TypedValue* _rv, ObjectData* this_, TypedValue* name) asm("_ZN4HPHP17c_DOMNamedNodeMap7t___getENS_7VariantE");
 
 TypedValue* tg_15DOMNamedNodeMap___get(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -12331,7 +11138,7 @@ TypedValue* tg_15DOMNamedNodeMap___get(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -12348,7 +11155,6 @@ value => rcx
 TypedValue* th_15DOMNamedNodeMap___set(TypedValue* _rv, ObjectData* this_, TypedValue* name, TypedValue* value) asm("_ZN4HPHP17c_DOMNamedNodeMap7t___setENS_7VariantES1_");
 
 TypedValue* tg_15DOMNamedNodeMap___set(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -12372,7 +11178,7 @@ TypedValue* tg_15DOMNamedNodeMap___set(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -12387,7 +11193,6 @@ name => rsi
 bool th_15DOMNamedNodeMap___isset(ObjectData* this_, TypedValue* name) asm("_ZN4HPHP17c_DOMNamedNodeMap9t___issetENS_7VariantE");
 
 TypedValue* tg_15DOMNamedNodeMap___isset(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -12412,7 +11217,7 @@ TypedValue* tg_15DOMNamedNodeMap___isset(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -12427,7 +11232,6 @@ this_ => rsi
 TypedValue* th_15DOMNamedNodeMap_getIterator(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP17c_DOMNamedNodeMap13t_getiteratorEv");
 
 TypedValue* tg_15DOMNamedNodeMap_getIterator(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -12451,7 +11255,7 @@ TypedValue* tg_15DOMNamedNodeMap_getIterator(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -12466,7 +11270,6 @@ this_ => rsi
 TypedValue* th_15DOMNamedNodeMap___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP17c_DOMNamedNodeMap12t___destructEv");
 
 TypedValue* tg_15DOMNamedNodeMap___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -12490,78 +11293,16 @@ TypedValue* tg_15DOMNamedNodeMap___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_DOMNodeList_Instance : public c_DOMNodeList {
-public:
-  c_DOMNodeList_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_DOMNodeList));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_DOMNodeList) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_DOMNodeList_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_DOMNodeList_Instance *this_ = (c_DOMNodeList_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_DOMNodeList) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_DOMNodeList::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_DOMNodeList::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_DOMNodeList::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_DOMNodeList::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_DOMNodeList_Instance(HPHP::VM::Class* cls) {
-  return c_DOMNodeList_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_DOMNodeList) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_DOMNodeList(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -12574,7 +11315,6 @@ this_ => rdi
 void th_11DOMNodeList___construct(ObjectData* this_) asm("_ZN4HPHP13c_DOMNodeList13t___constructEv");
 
 TypedValue* tg_11DOMNodeList___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -12600,7 +11340,7 @@ TypedValue* tg_11DOMNodeList___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -12625,7 +11365,6 @@ TypedValue* tg1_11DOMNodeList_item(TypedValue* rv, HPHP::VM::ActRec* ar, long lo
 }
 
 TypedValue* tg_11DOMNodeList_item(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -12656,7 +11395,7 @@ TypedValue* tg_11DOMNodeList_item(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -12672,7 +11411,6 @@ name => rdx
 TypedValue* th_11DOMNodeList___get(TypedValue* _rv, ObjectData* this_, TypedValue* name) asm("_ZN4HPHP13c_DOMNodeList7t___getENS_7VariantE");
 
 TypedValue* tg_11DOMNodeList___get(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -12696,7 +11434,7 @@ TypedValue* tg_11DOMNodeList___get(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -12713,7 +11451,6 @@ value => rcx
 TypedValue* th_11DOMNodeList___set(TypedValue* _rv, ObjectData* this_, TypedValue* name, TypedValue* value) asm("_ZN4HPHP13c_DOMNodeList7t___setENS_7VariantES1_");
 
 TypedValue* tg_11DOMNodeList___set(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -12737,7 +11474,7 @@ TypedValue* tg_11DOMNodeList___set(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -12752,7 +11489,6 @@ name => rsi
 bool th_11DOMNodeList___isset(ObjectData* this_, TypedValue* name) asm("_ZN4HPHP13c_DOMNodeList9t___issetENS_7VariantE");
 
 TypedValue* tg_11DOMNodeList___isset(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -12777,7 +11513,7 @@ TypedValue* tg_11DOMNodeList___isset(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -12792,7 +11528,6 @@ this_ => rsi
 TypedValue* th_11DOMNodeList_getIterator(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP13c_DOMNodeList13t_getiteratorEv");
 
 TypedValue* tg_11DOMNodeList_getIterator(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -12816,7 +11551,7 @@ TypedValue* tg_11DOMNodeList_getIterator(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -12831,7 +11566,6 @@ this_ => rsi
 TypedValue* th_11DOMNodeList___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP13c_DOMNodeList12t___destructEv");
 
 TypedValue* tg_11DOMNodeList___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -12855,78 +11589,16 @@ TypedValue* tg_11DOMNodeList___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_DOMImplementation_Instance : public c_DOMImplementation {
-public:
-  c_DOMImplementation_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_DOMImplementation));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_DOMImplementation) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_DOMImplementation_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_DOMImplementation_Instance *this_ = (c_DOMImplementation_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_DOMImplementation) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_DOMImplementation::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_DOMImplementation::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_DOMImplementation::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_DOMImplementation::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_DOMImplementation_Instance(HPHP::VM::Class* cls) {
-  return c_DOMImplementation_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_DOMImplementation) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_DOMImplementation(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -12939,7 +11611,6 @@ this_ => rdi
 void th_17DOMImplementation___construct(ObjectData* this_) asm("_ZN4HPHP19c_DOMImplementation13t___constructEv");
 
 TypedValue* tg_17DOMImplementation___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -12965,7 +11636,7 @@ TypedValue* tg_17DOMImplementation___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -13007,7 +11678,6 @@ TypedValue* tg1_17DOMImplementation_createDocument(TypedValue* rv, HPHP::VM::Act
 }
 
 TypedValue* tg_17DOMImplementation_createDocument(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -13038,7 +11708,7 @@ TypedValue* tg_17DOMImplementation_createDocument(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -13080,7 +11750,6 @@ TypedValue* tg1_17DOMImplementation_createDocumentType(TypedValue* rv, HPHP::VM:
 }
 
 TypedValue* tg_17DOMImplementation_createDocumentType(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -13111,7 +11780,7 @@ TypedValue* tg_17DOMImplementation_createDocumentType(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -13142,7 +11811,6 @@ TypedValue* tg1_17DOMImplementation_hasFeature(TypedValue* rv, HPHP::VM::ActRec*
 }
 
 TypedValue* tg_17DOMImplementation_hasFeature(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -13174,7 +11842,7 @@ TypedValue* tg_17DOMImplementation_hasFeature(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -13189,7 +11857,6 @@ this_ => rsi
 TypedValue* th_17DOMImplementation___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP19c_DOMImplementation12t___destructEv");
 
 TypedValue* tg_17DOMImplementation___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -13213,78 +11880,16 @@ TypedValue* tg_17DOMImplementation___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_DOMXPath_Instance : public c_DOMXPath {
-public:
-  c_DOMXPath_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_DOMXPath));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_DOMXPath) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_DOMXPath_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_DOMXPath_Instance *this_ = (c_DOMXPath_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_DOMXPath) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_DOMXPath::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_DOMXPath::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_DOMXPath::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_DOMXPath::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_DOMXPath_Instance(HPHP::VM::Class* cls) {
-  return c_DOMXPath_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_DOMXPath) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_DOMXPath(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -13298,7 +11903,6 @@ doc => rsi
 void th_8DOMXPath___construct(ObjectData* this_, TypedValue* doc) asm("_ZN4HPHP10c_DOMXPath13t___constructERKNS_7VariantE");
 
 TypedValue* tg_8DOMXPath___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -13324,7 +11928,7 @@ TypedValue* tg_8DOMXPath___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -13360,7 +11964,6 @@ TypedValue* tg1_8DOMXPath_evaluate(TypedValue* rv, HPHP::VM::ActRec* ar, long lo
 }
 
 TypedValue* tg_8DOMXPath_evaluate(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -13391,7 +11994,7 @@ TypedValue* tg_8DOMXPath_evaluate(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -13427,7 +12030,6 @@ TypedValue* tg1_8DOMXPath_query(TypedValue* rv, HPHP::VM::ActRec* ar, long long 
 }
 
 TypedValue* tg_8DOMXPath_query(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -13458,7 +12060,7 @@ TypedValue* tg_8DOMXPath_query(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -13489,7 +12091,6 @@ TypedValue* tg1_8DOMXPath_registerNamespace(TypedValue* rv, HPHP::VM::ActRec* ar
 }
 
 TypedValue* tg_8DOMXPath_registerNamespace(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -13521,7 +12122,7 @@ TypedValue* tg_8DOMXPath_registerNamespace(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -13537,7 +12138,6 @@ funcs => rdx
 TypedValue* th_8DOMXPath_registerPHPFunctions(TypedValue* _rv, ObjectData* this_, TypedValue* funcs) asm("_ZN4HPHP10c_DOMXPath22t_registerphpfunctionsERKNS_7VariantE");
 
 TypedValue* tg_8DOMXPath_registerPHPFunctions(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -13562,7 +12162,7 @@ TypedValue* tg_8DOMXPath_registerPHPFunctions(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -13578,7 +12178,6 @@ name => rdx
 TypedValue* th_8DOMXPath___get(TypedValue* _rv, ObjectData* this_, TypedValue* name) asm("_ZN4HPHP10c_DOMXPath7t___getENS_7VariantE");
 
 TypedValue* tg_8DOMXPath___get(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -13602,7 +12201,7 @@ TypedValue* tg_8DOMXPath___get(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -13619,7 +12218,6 @@ value => rcx
 TypedValue* th_8DOMXPath___set(TypedValue* _rv, ObjectData* this_, TypedValue* name, TypedValue* value) asm("_ZN4HPHP10c_DOMXPath7t___setENS_7VariantES1_");
 
 TypedValue* tg_8DOMXPath___set(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -13643,7 +12241,7 @@ TypedValue* tg_8DOMXPath___set(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -13658,7 +12256,6 @@ name => rsi
 bool th_8DOMXPath___isset(ObjectData* this_, TypedValue* name) asm("_ZN4HPHP10c_DOMXPath9t___issetENS_7VariantE");
 
 TypedValue* tg_8DOMXPath___isset(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -13683,7 +12280,7 @@ TypedValue* tg_8DOMXPath___isset(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -13698,7 +12295,6 @@ this_ => rsi
 TypedValue* th_8DOMXPath___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP10c_DOMXPath12t___destructEv");
 
 TypedValue* tg_8DOMXPath___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -13722,7 +12318,7 @@ TypedValue* tg_8DOMXPath___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 

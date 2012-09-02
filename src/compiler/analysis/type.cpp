@@ -626,18 +626,18 @@ string Type::getCPPDecl(AnalysisResultConstPtr ar,
 
 DataType Type::getDataType() const {
   switch (m_kindOf) {
-  case KindOfBoolean:     return HPHP::KindOfBoolean;
-  case KindOfInt32:
-  case KindOfInt64:       return HPHP::KindOfInt64;
-  case KindOfDouble:      return HPHP::KindOfDouble;
-  case KindOfString:      return HPHP::KindOfString;
-  case KindOfArray:       return HPHP::KindOfArray;
-  case KindOfObject:      return HPHP::KindOfObject;
-  case KindOfNumeric:
-  case KindOfPrimitive:
-  case KindOfPlusOperand:
-  case KindOfSequence:
-  default:                return HPHP::KindOfVariant;
+    case KindOfBoolean:     return HPHP::KindOfBoolean;
+    case KindOfInt32:
+    case KindOfInt64:       return HPHP::KindOfInt64;
+    case KindOfDouble:      return HPHP::KindOfDouble;
+    case KindOfString:      return HPHP::KindOfString;
+    case KindOfArray:       return HPHP::KindOfArray;
+    case KindOfObject:      return HPHP::KindOfObject;
+    case KindOfNumeric:
+    case KindOfPrimitive:
+    case KindOfPlusOperand:
+    case KindOfSequence:
+    default:                return HPHP::KindOfUnknown;
   }
 }
 
@@ -815,12 +815,18 @@ TypePtr Type::InferredObject(AnalysisResultConstPtr ar,
     // take the subclass
     ClassScopePtr cls1 = ar->findClass(type1->m_name);
     ClassScopePtr cls2 = ar->findClass(type2->m_name);
-    if (cls1 && !cls1->isRedeclaring()
-        && cls1->derivesFrom(ar, type2->m_name, true, false)) {
+    bool c1ok = cls1 && !cls1->isRedeclaring();
+    bool c2ok = cls2 && !cls2->isRedeclaring();
+
+    if (c1ok && cls1->derivesFrom(ar, type2->m_name, true, false)) {
       resultType = type1;
-    } else if (cls2 && !cls2->isRedeclaring()
-               && cls2->derivesFrom(ar, type1->m_name, true, false)) {
+    } else if (c2ok && cls2->derivesFrom(ar, type1->m_name, true, false)) {
       resultType = type2;
+    } else if (c1ok && c2ok && cls1->derivedByDynamic() &&
+               cls2->derivesFromRedeclaring()) {
+      resultType = type2;
+    } else {
+      resultType = type1;
     }
   }
   return resultType;

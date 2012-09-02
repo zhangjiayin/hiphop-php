@@ -48,10 +48,12 @@ void Instance::initialize(Slot nProps) {
   const Class::PropInitVec* propInitVec = m_cls->getPropData();
   ASSERT(propInitVec != NULL);
   ASSERT(nProps == propInitVec->size());
-  memcpy(m_propVec, &(*propInitVec)[0], nProps * sizeof(TypedValue));
+  TypedValue* propVec = (TypedValue *)((uintptr_t)this +
+                         sizeof(ObjectData) + builtinPropSize());
+  memcpy(propVec, &(*propInitVec)[0], nProps * sizeof(TypedValue));
 }
 
-void Instance::instanceInit() {
+void Instance::callCustomInstanceInit() {
   static StringData* sd_init = StringData::GetStaticString("__init__");
   const Func* init = m_cls->lookupMethod(sd_init);
   if (init != NULL) {
@@ -68,7 +70,7 @@ void Instance::instanceInit() {
 
 void Instance::destructHard(const Func* meth) {
   static ArrayData* args =
-    ArrayData::GetScalarArray(StaticEmptyHphpArray::Get());
+    ArrayData::GetScalarArray(HphpArray::GetStaticEmptyArray());
   TypedValue retval;
   TV_WRITE_NULL(&retval);
   try {
@@ -93,8 +95,7 @@ void Instance::invokeUserMethod(TypedValue* retval, const Func* method,
 
 Object Instance::FromArray(ArrayData *properties) {
   ASSERT(hhvm);
-  Instance* retval =
-    Instance::newInstance(SystemLib::s_stdclassClass);
+  Instance* retval = Instance::newInstance(SystemLib::s_stdclassClass);
   retval->initDynProps();
   HphpArray* props = static_cast<HphpArray*>(retval->o_properties.get());
   if (LIKELY(HphpArray::isHphpArray(properties))) {
@@ -133,11 +134,13 @@ void Instance::initDynProps(int numDynamic /* = 0 */) {
 }
 
 Slot Instance::declPropInd(TypedValue* prop) const {
-  // Do an address range check to determine whether prop physically resides in
-  // m_propVec.
-  if (uintptr_t(prop) >= uintptr_t(m_propVec) && uintptr_t(prop) <
-      uintptr_t(&m_propVec[m_cls->numDeclProperties()])) {
-    return (uintptr_t(prop) - uintptr_t(m_propVec)) / sizeof(TypedValue);
+  // Do an address range check to determine whether prop physically resides
+  // in propVec.
+  TypedValue* propVec = (TypedValue *)((uintptr_t)this +
+                         sizeof(ObjectData) + builtinPropSize());
+  if (uintptr_t(prop) >= uintptr_t(propVec) && uintptr_t(prop) <
+      uintptr_t(&propVec[m_cls->numDeclProperties()])) {
+    return (uintptr_t(prop) - uintptr_t(propVec)) / sizeof(TypedValue);
   } else {
     return kInvalidSlot;
   }
@@ -152,9 +155,11 @@ TypedValue* Instance::getPropImpl(Class* ctx, const StringData* key,
   Slot propInd = m_cls->getDeclPropIndex(ctx, key, accessible);
   visible = (propInd != kInvalidSlot);
   if (propInd != kInvalidSlot) {
+    TypedValue* propVec = (TypedValue *)((uintptr_t)this +
+                           sizeof(ObjectData) + builtinPropSize());
     // We found a visible property, but it might not be accessible.
     // No need to check if there is a dynamic property with this name.
-    prop = &m_propVec[propInd];
+    prop = &propVec[propInd];
     if (prop->m_type == KindOfUninit) {
       unset = true;
     }
@@ -163,7 +168,7 @@ TypedValue* Instance::getPropImpl(Class* ctx, const StringData* key,
     // We could not find a visible property. We need to check for a
     // dynamic property with this name if declOnly = false.
     if (!declOnly && o_properties.get()) {
-      prop = static_cast<HphpArray*>(o_properties.get())->nvGet(key, false);
+      prop = static_cast<HphpArray*>(o_properties.get())->nvGet(key);
       if (prop) {
         // o_properties.get()->nvGet() returned a non-declared property,
         // we know that it is visible and accessible (since all
@@ -254,7 +259,7 @@ void Instance::propImpl(TypedValue*& retval, TypedValue& tvRef,
                     m_cls->m_preClass->name()->data(), key->data());
       }
     }
-  } else if (warn && UNLIKELY(!*key->data())) {
+  } else if (UNLIKELY(!*key->data())) {
     throw_invalid_property_name(StrNR(key));
   } else {
     if (getAttribute(UseGet)) {
@@ -373,17 +378,16 @@ TypedValue* Instance::setProp(Class* ctx, const StringData* key,
     if (o_properties.get() == NULL) {
       initDynProps();
     }
-    o_properties.get()->lvalPtr(*(const String*)&key,
-                        *(Variant**)(&propVal), false, true);
-    TypedValue tvRef;
-    tvWriteUninit(&tvRef);
-    propImpl<false, true>(propVal, tvRef, ctx, key);
+    // when seting a dynamic property, do not write
+    // directly to the TypedValue in the HphpArray, since
+    // its _count field is used to store the string hash of
+    // the property name. Instead, call the appropriate
+    // setters (set() or setRef()).
     if (UNLIKELY(bindingAssignment)) {
-      tvBind(val, propVal);
+      o_properties.get()->setRef(*(const String*)&key, tvAsCVarRef(val), false);
     } else {
-      tvSet(val, propVal);
+      o_properties.get()->set(*(const String*)&key, tvAsCVarRef(val), false);
     }
-    tvRefcountedDecRef(&tvRef);
     return NULL;
   }
   ASSERT(!accessible);
@@ -434,7 +438,9 @@ TypedValue* Instance::setOpProp(TypedValue& tvRef, Class* ctx,
     }
     o_properties.get()->lvalPtr(*(const String*)&key,
                         *(Variant**)(&propVal), false, true);
-    tvWriteNull(propVal);
+    // don't write propVal->_count because it holds data
+    // owned by the HphpArray
+    propVal->m_type = KindOfNull;
     SETOP_BODY(propVal, op, val);
     return propVal;
   } else if (!getAttribute(UseSet)) {
@@ -447,7 +453,10 @@ TypedValue* Instance::setOpProp(TypedValue& tvRef, Class* ctx,
     }
     o_properties.get()->lvalPtr(*(const String*)&key, *(Variant**)(&propVal),
                        false, true);
-    memcpy((void*)propVal, (void*)&tvResult, sizeof(TypedValue));
+    // don't write propVal->_count because it holds data
+    // owned by the HphpArray
+    propVal->m_data.num = tvResult.m_data.num;
+    propVal->m_type = tvResult.m_type;
     return propVal;
   }
   ASSERT(!accessible);
@@ -501,7 +510,9 @@ void Instance::incDecProp(TypedValue& tvRef, Class* ctx,
     }
     o_properties.get()->lvalPtr(*(const String*)&key,
                        *(Variant**)(&propVal), false, true);
-    tvWriteNull(propVal);
+    // don't write propVal->_count because it holds data
+    // owned by the HphpArray
+    propVal->m_type = KindOfNull;
     IncDecBody(op, propVal, &dest);
     return;
   } else if (!getAttribute(UseSet)) {
@@ -514,7 +525,10 @@ void Instance::incDecProp(TypedValue& tvRef, Class* ctx,
     }
     o_properties.get()->lvalPtr(*(const String*)&key, *(Variant**)(&propVal),
                        false, true);
-    memcpy((void*)propVal, (void*)&tvResult, sizeof(TypedValue));
+    // don't write propVal->_count because it holds data
+    // owned by the HphpArray
+    propVal->m_data.num = tvResult.m_data.num;
+    propVal->m_type = tvResult.m_type;
     return;
   }
   ASSERT(!accessible);
@@ -560,14 +574,6 @@ void Instance::raiseUndefProp(const StringData* key) {
                m_cls->name()->data(), key->data());
 }
 
-const String& Instance::o_getClassName() const {
-  return *(String*)(&m_cls->m_preClass->nameRef());
-}
-
-const String& Instance::o_getParentName() const {
-  return *(String*)(&m_cls->m_preClass->parentRef());
-}
-
 Array Instance::o_toIterArray(CStrRef context, bool getRef /* = false */) {
   int size = m_cls->m_declPropNumAccessible +
                (o_properties.get() != NULL ? o_properties.get()->size() : 0);
@@ -590,10 +596,10 @@ Array Instance::o_toIterArray(CStrRef context, bool getRef /* = false */) {
       TypedValue* val = getProp(ctx, key, visible, accessible, unset);
       if (accessible && val->m_type != KindOfUninit && !unset) {
         if (getRef) {
-          if (val->m_type != KindOfVariant) {
+          if (val->m_type != KindOfRef) {
             tvBox(val);
           }
-          retval->nvBind(key, val, false);
+          retval->nvBind(key, val);
         } else {
           retval->nvSet(key, val, false);
         }
@@ -617,10 +623,10 @@ Array Instance::o_toIterArray(CStrRef context, bool getRef /* = false */) {
         TypedValue* val =
           static_cast<HphpArray*>(o_properties.get())->nvGet(key.m_data.num);
         if (getRef) {
-          if (val->m_type != KindOfVariant) {
+          if (val->m_type != KindOfRef) {
             tvBox(val);
           }
-          retval->nvBind(key.m_data.num, val, false);
+          retval->nvBind(key.m_data.num, val);
         } else {
           retval->nvSet(key.m_data.num, val, false);
         }
@@ -630,10 +636,10 @@ Array Instance::o_toIterArray(CStrRef context, bool getRef /* = false */) {
       TypedValue* val =
         static_cast<HphpArray*>(o_properties.get())->nvGet(key.m_data.pstr);
       if (getRef) {
-        if (val->m_type != KindOfVariant) {
+        if (val->m_type != KindOfRef) {
           tvBox(val);
         }
-        retval->nvBind(key.m_data.pstr, val, false);
+        retval->nvBind(key.m_data.pstr, val);
       } else {
         retval->nvSet(key.m_data.pstr, val, false);
       }
@@ -682,7 +688,9 @@ void Instance::getProp(const Class* klass, bool pubOnly,
 
   Slot propInd = klass->lookupDeclProp(prop->name());
   ASSERT(propInd != kInvalidSlot);
-  TypedValue* propVal = &m_propVec[propInd];
+  TypedValue* propVec = (TypedValue *)((uintptr_t)this +
+                         sizeof(ObjectData) + builtinPropSize());
+  TypedValue* propVal = &propVec[propInd];
 
   if ((!pubOnly || (prop->attrs() & AttrPublic)) &&
       propVal->m_type != KindOfUninit &&
@@ -706,7 +714,7 @@ void Instance::getProps(const Class* klass, bool pubOnly,
 
 void Instance::o_getArray(Array& props, bool pubOnly /* = false */) const {
   // The declared properties in the resultant array should be a permutation of
-  // m_propVec. They appear in the following order: go most-to-least-derived in
+  // propVec. They appear in the following order: go most-to-least-derived in
   // the inheritance hierarchy, inserting properties in declaration order (with
   // the wrinkle that overridden properties should appear only once, with the
   // access level given to it in its most-derived declaration).
@@ -741,7 +749,7 @@ void Instance::o_getArray(Array& props, bool pubOnly /* = false */) const {
 
 bool Instance::o_get_call_info_hook(const char *clsname,
                                     MethodCallPackage &mcp,
-                                    int64 hash /* = -1 */) {
+                                    strhash_t hash /* = -1 */) {
   return false;
 }
 
@@ -822,16 +830,24 @@ Variant Instance::t___unset(Variant v_name) {
 DECLARE_THREAD_LOCAL(Variant, __lvalProxy);
 DECLARE_THREAD_LOCAL(Variant, nullProxy);
 
-Variant& Instance::___offsetget_lval(Variant v_name) {
-  static StringData* sd__offsetGet = StringData::GetStaticString("offsetGet");
-  const Func* method = m_cls->lookupMethod(sd__offsetGet);
-  if (method) {
-    Variant *v = __lvalProxy.get();
-    g_vmContext->invokeFunc((TypedValue*)v, method,
-                          CREATE_VECTOR1(v_name), this);
-    return *v;
+Variant& Instance::___offsetget_lval(Variant key) {
+  if (isCollection()) {
+    return collectionOffsetGet(this, key);
   } else {
-    return *nullProxy.get();
+    if (!o_instanceof("ArrayAccess")) {
+      throw InvalidOperandException("not ArrayAccess objects");
+    }
+    static StringData* sd__offsetGet = StringData::GetStaticString("offsetGet");
+    const Func* method = m_cls->lookupMethod(sd__offsetGet);
+    ASSERT(method);
+    if (method) {
+      Variant *v = __lvalProxy.get();
+      g_vmContext->invokeFunc((TypedValue*)v, method,
+                              CREATE_VECTOR1(key), this);
+      return *v;
+    } else {
+      return *nullProxy.get();
+    }
   }
 }
 
@@ -910,10 +926,14 @@ Variant Instance::t___clone() {
 void Instance::cloneSet(ObjectData* clone) {
   Instance* iclone = static_cast<Instance*>(clone);
   Slot nProps = m_cls->numDeclProperties();
+  TypedValue* propVec = (TypedValue *)((uintptr_t)this +
+                         sizeof(ObjectData) + builtinPropSize());
+  TypedValue* iclonePropVec = (TypedValue *)((uintptr_t)iclone +
+                               sizeof(ObjectData) + builtinPropSize());
   for (Slot i = 0; i < nProps; i++) {
-    tvRefcountedDecRef(&iclone->m_propVec[i]);
-    TypedValue* fr = &m_propVec[i];
-    TypedValue* to = &iclone->m_propVec[i];
+    tvRefcountedDecRef(&iclonePropVec[i]);
+    TypedValue* fr = &propVec[i];
+    TypedValue* to = &iclonePropVec[i];
     TV_DUP_FLATTEN_VARS(fr, to, NULL);
   }
   iclone->initDynProps();
@@ -922,12 +942,22 @@ void Instance::cloneSet(ObjectData* clone) {
     while (iter != HphpArray::ElmIndEmpty) {
       TypedValue key;
       static_cast<HphpArray*>(o_properties.get())->nvGetKey(&key, iter);
-      TypedValue* retval;
       TypedValue *val =
         static_cast<HphpArray*>(o_properties.get())->nvGet(key.m_data.pstr);
-      iclone->o_properties.get()->lvalPtr(*(const String *)&key.m_data.pstr,
-                                 *(Variant**)&retval, false, true);
-      TV_DUP_FLATTEN_VARS(val, retval, iclone->o_properties.get());
+      // duplicate logic of TV_DUP_FLATTEN_VARS so that we
+      // can avoid setting _count, which holds data owned by the
+      // HphpArray.
+      if (LIKELY(val->m_type != KindOfRef)) {
+        iclone->o_properties.get()->set(*(const String *)&key.m_data.pstr,
+                                        tvAsCVarRef(val), false);
+      } else if (val->m_data.ptv->_count <= 1) {
+        val = val->m_data.ptv;
+        iclone->o_properties.get()->set(*(const String *)&key.m_data.pstr,
+                                        tvAsCVarRef(val), false);
+      } else {
+        iclone->o_properties.get()->setRef(*(const String *)&key.m_data.pstr,
+                                           tvAsCVarRef(val), false);
+      }
       iter = o_properties.get()->iter_advance(iter);
     }
   }
@@ -939,14 +969,6 @@ ObjectData* Instance::cloneImpl() {
   obj->incRefCount();
   obj->t___clone();
   return obj;
-}
-
-bool Instance::hasCall() {
-  return m_cls->lookupMethod(s___call.get()) != NULL;
-}
-
-bool Instance::hasCallStatic() {
-  return m_cls->lookupMethod(s___callStatic.get()) != NULL;
 }
 
 } } // HPHP::VM

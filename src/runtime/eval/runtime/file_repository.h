@@ -17,16 +17,26 @@
 #ifndef __EVAL_FILE_REPOSITORY_H__
 #define __EVAL_FILE_REPOSITORY_H__
 
-#include <runtime/eval/base/eval_base.h>
-#include <runtime/eval/analysis/block.h>
 #include <time.h>
 #include <sys/stat.h>
 #include <util/lock.h>
 #include <util/atomic.h>
 
+#include <runtime/base/runtime_option.h>
+#include <runtime/base/md5.h>
+#include <runtime/base/complex_types.h>
+#include <runtime/base/string_util.h>
+
 namespace HPHP {
 namespace VM {
 class Unit;
+
+/* UnitVisitor: abstract interface for running code on each Unit. */
+class UnitVisitor {
+public:
+  virtual ~UnitVisitor() { }
+  virtual void operator()(Unit *u) = 0;
+};
 }
 }
 
@@ -34,42 +44,25 @@ namespace HPHP {
 namespace Eval {
 ///////////////////////////////////////////////////////////////////////////////
 
-DECLARE_AST_PTR(Statement);
-DECLARE_AST_PTR(StaticStatement);
-
 static inline bool md5Enabled() {
-  if (hhvm) {
-    return true;
-  } else {
-    return RuntimeOption::SandboxCheckMd5;
-  }
+  return true;
 }
 
 static inline bool isAuthoritativeRepo() {
-  if (hhvm) {
-    return RuntimeOption::RepoAuthoritative;
-  } else {
-    return false;
-  }
+  return RuntimeOption::RepoAuthoritative;
 }
 
-class PhpFile : public Block {
+class PhpFile {
 public:
-  PhpFile(StatementPtr tree, const std::vector<StaticStatementPtr> &statics,
-          const Block::VariableIndices &variableIndices,
-          const std::string &fileName, const std::string &srcRoot,
-          const std::string &relPath, const std::string &md5);
   PhpFile(const std::string &fileName, const std::string &srcRoot,
           const std::string &relPath, const std::string &md5,
           HPHP::VM::Unit* unit);
   ~PhpFile();
-  Variant eval(LVariableTable *env);
   void incRef();
   int decRef(int num = 1);
   void decRefAndDelete();
   int getRef() { return m_refCount; }
   // time_t readTime() const { return m_timestamp; }
-  const StatementPtr &getTree() const { return m_tree; }
   const std::string &getFileName() const { return m_fileName; }
   const std::string &getSrcRoot() const { return m_srcRoot; }
   const std::string &getRelPath() const { return m_relPath; }
@@ -81,7 +74,6 @@ public:
 private:
   int m_refCount;
   unsigned m_id;
-  StatementPtr m_tree;
   std::string m_profName;
   std::string m_fileName;
   std::string m_srcRoot;
@@ -92,7 +84,7 @@ private:
 
 class PhpFileWrapper {
   static int64 timespecCompare(const struct timespec& l,
-                             const struct timespec& r) {
+                               const struct timespec& r) {
     if (l.tv_sec != r.tv_sec) return l.tv_sec - r.tv_sec;
     int64 ret = l.tv_nsec - r.tv_nsec;
     return ret;
@@ -167,6 +159,7 @@ public:
   static String translateFileName(StringData *file);
   static void enableIntercepts();
   static void onDelete(PhpFile *f);
+  static void forEachUnit(VM::UnitVisitor& uit);
 private:
   static ParsedFilesMap s_files;
   static UnitMd5Map s_unitMd5Map;
@@ -176,7 +169,6 @@ private:
   static bool fileStat(const std::string &name, struct stat *s);
   static std::set<std::string> s_names;
 };
-
 
 ///////////////////////////////////////////////////////////////////////////////
 }

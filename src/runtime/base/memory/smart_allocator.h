@@ -19,11 +19,11 @@
 
 #include <boost/noncopyable.hpp>
 #include <boost/dynamic_bitset.hpp>
+#include <boost/type_traits/is_base_of.hpp>
 
 #include <util/base.h>
 #include <util/thread_local.h>
 #include <util/stack_trace.h>
-#include <util/chunk_list.h>
 #include <util/lock.h>
 #include <runtime/base/types.h>
 #include <runtime/base/util/countable.h>
@@ -36,17 +36,27 @@ namespace HPHP {
 #endif
 
 //#define DEBUGGING_SMART_ALLOCATOR 1
-//#define SMART_ALLOCATOR_STACKTRACE 1
 //#define SMART_ALLOCATOR_DEBUG_FREE
 
 ///////////////////////////////////////////////////////////////////////////////
+
 /**
  * If a class is using SmartAllocator, all "new" and "delete" should be done
  * through these two macros in a form like this,
  *
  *   MyClass *obj = NEW(MyClass)(...);
  *   DELETE(MyClass)(obj);
+ *
+ * Note that these various allocation functions should only be used
+ * for ObjectData-derived classes.  (If you need other
+ * request-lifetime memory you need to do something else.)
  */
+
+template<class T>
+inline void smart_allocator_check_type() {
+  static_assert((boost::is_base_of<ObjectData,T>::value),
+                "Non-ObjectData allocated in smart heap");
+}
 
 #ifdef DEBUGGING_SMART_ALLOCATOR
 #define NEW(T) new T
@@ -61,10 +71,11 @@ namespace HPHP {
 #else
 #define NEW(T) new (T::AllocatorType::getNoCheck()) T
 #define NEWOBJ(T) new                                     \
-  (ThreadLocalSingleton                                   \
+  ((smart_allocator_check_type<T>(), ThreadLocalSingleton \
     <ObjectAllocator<ObjectSizeClass<sizeof(T)>::value> > \
-    ::getNoCheck()) T
-#define NEWOBJSZ(T,SZ) new (info->instanceSizeAllocator(SZ)) T
+    ::getNoCheck())) T
+#define NEWOBJSZ(T,SZ) \
+  new ((smart_allocator_check_type<T>(), info->instanceSizeAllocator(SZ))) T
 #define ALLOCOBJSZ(SZ) (ThreadInfo::s_threadInfo.getNoCheck()->\
                         instanceSizeAllocator(SZ)->alloc())
 #define DELETE(T) T::AllocatorType::getNoCheck()->release
@@ -142,10 +153,107 @@ void InitAllocatorThreadLocal() ATTRIBUTE_COLD;
 #define MAX_OBJECT_COUNT_PER_SLAB 64
 #define SLAB_SIZE (128 * 1024)
 
-typedef ChunkList<void *, SLAB_SIZE> FreeList;
-
 typedef hphp_hash_map<int64, int, int64_hash> BlockIndexMap;
 typedef boost::dynamic_bitset<unsigned long long> FreeMap;
+
+/**
+ * A garbage list is a freelist of items that uses the space in the items
+ * to store a singly linked list.
+ */
+class GarbageList {
+public:
+  GarbageList() : ptr(NULL) {
+    // We store the free list pointers right at the start of each
+    // object.  The VM also stores a flag into the _count field to
+    // know the object is deallocated---this assert just makes sure
+    // they don't overlap.
+    static_assert((FAST_REFCOUNT_OFFSET >= sizeof(void*)),
+                  "FAST_REFCOUNT_OFFSET has to be larger than "
+                  "sizeof(void*) to work correctly with GarbageList");
+  }
+
+  // Pops an item, or returns NULL
+  void* maybePop() {
+    void** ret = ptr;
+    if (LIKELY(ret != NULL)) {
+      ptr = (void**)*ret;
+    }
+    return ret;
+  }
+
+  // Pushes an item on to the list. The item must be larger than
+  // sizeof(void*)
+  void push(void* val) {
+    void** convval = (void**)val;
+    *convval = ptr;
+    ptr = convval;
+  }
+
+  // Number of items on the list.
+  int size() const {
+    int sz = 0;
+    for (Iterator it = begin(), e = end(); it != e; ++it, ++sz) {}
+    return sz;
+  }
+
+  bool empty() const {
+    return ptr == NULL;
+  }
+
+  // Remove all items from this list
+  void clear() {
+    ptr = NULL;
+  }
+
+  class Iterator {
+  public:
+    Iterator(const GarbageList& l) : curptr(l.ptr) {}
+
+    Iterator(const Iterator &other) : curptr(other.curptr) {}
+    Iterator() : curptr(NULL) {}
+
+    bool operator==(const Iterator &it) {
+      return curptr == it.curptr;
+    }
+
+    bool operator!=(const Iterator &it) {
+      return !operator==(it);
+    }
+
+    Iterator &operator++() {
+      if (curptr) {
+        curptr = (void**)*curptr;
+      }
+      return *this;
+    }
+
+    Iterator operator++(int) {
+      Iterator ret(*this);
+      operator++();
+      return ret;
+    }
+
+    void* operator*() const {
+      return curptr;
+    }
+
+  private:
+    void** curptr;
+  };
+
+  Iterator begin() const {
+    return Iterator(*this);
+  }
+
+  Iterator end() const {
+    return Iterator();
+  }
+
+  typedef Iterator iterator;
+
+private:
+  void** ptr;
+};
 
 /**
  * Just a simple free-list based memory allocator.
@@ -166,69 +274,46 @@ public:
 
   struct Iterator;
 
+  // Ensure we have room for freelist and _count tombstone
+  static const size_t MinItemSize = 16;
+
 public:
   SmartAllocatorImpl(int nameEnum, int itemCount, int itemSize, int flag);
   virtual ~SmartAllocatorImpl();
 
-  /**
-   * Called by MemoryManager to store its usage stats pointer inside this
-   * allocator for easy access during alloc/free time.
-   */
-  void registerStats(MemoryUsageStats *stats) { m_stats = stats;}
-  MemoryUsageStats & getStats() { return *m_stats; }
-
   Name getAllocatorType() const { return m_nameEnum; }
-  const char* getAllocatorName() const { return m_name; }
   int getItemSize() const { return m_itemSize;}
-  int getItemCount() const { return m_itemCount;}
+  static size_t itemSizeRoundup(size_t n) {
+    return n >= MinItemSize ? n : MinItemSize;
+  }
 
   /**
    * Allocation/deallocation of object memory.
    */
-  void *alloc();
-  void *allocHelper() NEVER_INLINE;
+  void* alloc() { return alloc(m_itemSize); }
+  void* alloc(size_t size);
   void dealloc(void *obj) {
-#ifdef SMART_ALLOCATOR_STACKTRACE
-    if (!isValid(obj)) {
-      Lock lock(s_st_mutex);
-      if (s_st_allocs.find(obj) != s_st_allocs.end()) {
-        printf("Object %p was allocated from a different thread: %s\n",
-               obj, s_st_allocs[obj].toString().c_str());
-      } else {
-        printf("Object %p was not smart allocated\n", obj);
-      }
-    }
-    s_st_allocs.erase(obj);
-#endif
-    ASSERT(isValid(obj));
-    m_freelist.push_back(obj);
-#ifdef SMART_ALLOCATOR_STACKTRACE
-    {
-      Lock lock(s_st_mutex);
-      bool enabled = StackTrace::Enabled;
-      StackTrace::Enabled = true;
-      s_st_deallocs.operator[](obj);
-      StackTrace::Enabled = enabled;
-    }
-#endif
-#ifdef SMART_ALLOCATOR_DEBUG_FREE
-    memset(obj, 0xfe, m_itemSize);
-#endif
-    if (hhvm_gc) {
+    ASSERT(assertValidHelper(obj));
+    ASSERT(memset(obj, 0x5a, m_itemSize));
+    m_freelist.push(obj);
+    if (hhvm) {
       int tomb = RefCountTombstoneValue;
       memcpy((char*)obj + FAST_REFCOUNT_OFFSET, &tomb, sizeof tomb);
     }
-
     ASSERT(m_stats);
     m_stats->usage -= m_itemSize;
   }
-  bool isValid(void *obj) const;
+
+  /*
+   * Returns whether the given pointer points into this smart
+   * allocator (regardless of whether it is already freed).
+   */
+  bool isFromThisAllocator(void*) const;
 
   /**
    * MemoryManager functions.
    */
   void rollbackObjects();
-  void logStats();
   void checkMemory(bool detailed);
 
   /**
@@ -238,34 +323,34 @@ public:
   virtual void dump(void *p) = 0;
 
 private:
+  void* allocHelper() NEVER_INLINE;
+  void statsHelper() NEVER_INLINE;
+  bool assertValidHelper(void *obj) const;
+
+  // keep these frequently used fields together.
+protected:
+  MemoryUsageStats *m_stats;
+private:
+  GarbageList m_freelist;
+  char* m_next;
+  char* m_limit;
+  const int m_itemSize;
+  int m_row; // outer index
+  int m_colMax;
+  std::vector<char *> m_blocks;
+
+  // these are less frequently used and can be packed.
   const Name m_nameEnum;
   const char* m_name;
   int m_itemCount;
-  const int m_itemSize;
   int m_flag;
 
-  std::vector<char *> m_blocks;
   BlockIndexMap m_blockIndex;
-  int m_row; // outer index
-  int m_col; // inner position
-  int m_colMax;
-
-  FreeList m_freelist;
 
   int m_allocatedBlocks;  // how many blocks are left in the last batch
   int m_multiplier;       // allocate m_multiplier blocks at once
   int m_maxMultiplier;    // the max possible multiplier
   int m_targetMultiplier; // updated upon rollback
-
-protected:
-
-#ifdef SMART_ALLOCATOR_STACKTRACE
-  static Mutex s_st_mutex;
-  static std::map<void*, StackTrace> s_st_allocs;
-  static std::map<void*, StackTrace> s_st_deallocs;
-#endif
-
-  MemoryUsageStats *m_stats;
 
   void prepareFreeMap(FreeMap& freeMap) const;
 };
@@ -276,10 +361,6 @@ protected:
  * It is legal to deallocate the currently pointed to element during
  * iteration (and will not affect the iteration state).  Other changes
  * to the allocator during iteration do not have guaranteed behavior.
- *
- * NOTE: This iteration support is for experimental work on GC, and
- * only actually works when HHVM_GC is defined, to avoid the need to
- * write back into object data when deallocating in other builds.
  */
 struct SmartAllocatorImpl::Iterator : private boost::noncopyable {
   explicit Iterator(const SmartAllocatorImpl*);
@@ -305,8 +386,8 @@ class SmartAllocator : public SmartAllocatorImpl {
    * times to grow the memory, but the higher chance of increasing memory
    * footprint.
    */
-  SmartAllocator(int itemCount = -1)
-    : SmartAllocatorImpl(TNameEnum, itemCount, sizeof(T), flag) {}
+  SmartAllocator() : SmartAllocatorImpl(TNameEnum, -1, sizeof(T), flag) {
+  }
 
   void release(T *p) {
     if (p) {
@@ -328,14 +409,14 @@ class SmartAllocator : public SmartAllocatorImpl {
     }
   }
 
-  static SmartAllocator<T, TNameEnum, flag> *Create() {
-    return new SmartAllocator<T, TNameEnum, flag>();
+  static void Create(void* storage) {
+    new (storage) SmartAllocator<T, TNameEnum, flag>();
   }
   static void Delete(SmartAllocator *p) {
-    delete p;
+    p->~SmartAllocator();
   }
   static void OnThreadExit(SmartAllocator *p) {
-    delete p;
+    p->~SmartAllocator();
   }
 };
 
@@ -348,14 +429,28 @@ void *SmartAllocatorInitSetup() {
 
 ///////////////////////////////////////////////////////////////////////////////
 // This allocator is for unknown but fixed sized classes, like ObjectData.
-// NS::T::s_T_initializer allows private inner classes to be initialized,
-// this is completely hidden by using a nested private llocatorInitializer
 
 #define DECLARE_OBJECT_ALLOCATION_NO_SWEEP(T)                           \
   public:                                                               \
   static void *ObjAllocatorInitSetup;                                   \
   inline ALWAYS_INLINE void operator delete(void *p) {                  \
-    RELEASEOBJ(NS, T, p);                                               \
+    if (!hhvm || T::IsResourceClass) {                                  \
+      RELEASEOBJ(NS, T, p);                                             \
+      return;                                                           \
+    }                                                                   \
+    HPHP::VM::Instance* this_ = (HPHP::VM::Instance*)p;                 \
+    HPHP::VM::Class* cls = this_->getVMClass();                         \
+    size_t nProps = cls->numDeclProperties();                           \
+    size_t builtinPropSize = cls->builtinPropSize();                    \
+    TypedValue* propVec =                                               \
+      (TypedValue *)((uintptr_t)this_ + sizeof(ObjectData) +            \
+                     builtinPropSize);                                  \
+    for (unsigned i = 0; i < nProps; ++i) {                             \
+      TypedValue* prop = &propVec[i];                                   \
+      tvRefcountedDecRef(prop);                                         \
+    }                                                                   \
+    DELETEOBJSZ(HPHP::VM::Instance::sizeForNProps(nProps) +             \
+                builtinPropSize)(this_);                                \
   }
 
 #define DECLARE_OBJECT_ALLOCATION(T)                                    \
@@ -394,14 +489,14 @@ public:
 template<int S>
 class ObjectAllocator : public ObjectAllocatorBase {
 public:
-  static ObjectAllocator<S> *Create() {
-    return new ObjectAllocator<S>();
+  static void Create(void* storage) {
+    new (storage) ObjectAllocator<S>();
   }
   static void Delete(ObjectAllocator *p) {
-    delete p;
+    p->~ObjectAllocator();
   }
   static void OnThreadExit(ObjectAllocator *p) {
-    delete p;
+    p->~ObjectAllocator();
   }
 
   ObjectAllocator() : ObjectAllocatorBase(S) { }
@@ -411,23 +506,27 @@ public:
 }
 
 template<typename T, int TNameEnum, int F>
-inline void *operator new
-(size_t sizeT, HPHP::SmartAllocator<T, TNameEnum, F> *a) {
-  return a->alloc();
+inline void *operator new(size_t sizeT,
+                          HPHP::SmartAllocator<T, TNameEnum, F> *a) {
+  ASSERT(sizeT == sizeof(T));
+  return a->alloc(HPHP::SmartAllocatorImpl::itemSizeRoundup(sizeof(T)));
 }
 
 inline void *operator new(size_t sizeT, HPHP::ObjectAllocatorBase *a) {
+  ASSERT(sizeT <= size_t(a->getItemSize()));
   return a->alloc();
 }
 
 template<typename T, int TNameEnum, int F>
 inline void operator delete
 (void *p, HPHP::SmartAllocator<T, TNameEnum, F> *a) {
-  a->release((T*)p);
+  ASSERT(p);
+  a->dealloc((T*)p);
 }
 
 inline void operator delete(void *p , HPHP::ObjectAllocatorBase *a) {
-  a->release(p);
+  ASSERT(p);
+  a->dealloc(p);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

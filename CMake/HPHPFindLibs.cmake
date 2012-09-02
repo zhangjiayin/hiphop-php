@@ -28,6 +28,24 @@ endif()
 include_directories(${Boost_INCLUDE_DIRS})
 link_directories(${Boost_LIBRARY_DIRS})
 
+# inotify checks
+find_package(Libinotify)
+if (LIBINOTIFY_INCLUDE_DIR)
+	include_directories(${LIBINOTIFY_INCLUDE_DIR})
+endif()
+
+# unwind checks
+find_package(Libunwind REQUIRED)
+include_directories(${LIBUNWIND_INCLUDE_DIR})
+
+# iconv checks
+find_package(Libiconv REQUIRED)
+include_directories(${LIBICONV_INCLUDE_DIR})
+if (LIBICONV_CONST)
+  message(STATUS "Using const for input to iconv() call")
+  add_definitions("-DICONV_CONST=const")
+endif()
+
 # mysql checks
 find_package(MySQL REQUIRED)
 include_directories(${MYSQL_INCLUDE_DIR})
@@ -195,11 +213,11 @@ endif()
 
 # tbb libs
 find_package(TBB REQUIRED)
-if (${TBB_INTERFACE_VERSION} LESS 3016)
+if (${TBB_INTERFACE_VERSION} LESS 5005)
 	unset(TBB_FOUND CACHE)
 	unset(TBB_INCLUDE_DIRS CACHE)
 	unset(TBB_LIBRARIES CACHE)
-	message(FATAL_ERROR "TBB is too old, please install a newer version")
+	message(FATAL_ERROR "TBB is too old, please install at least 3.0(5005), preferably 4.0(6000) or higher")
 endif()
 include_directories(${TBB_INCLUDE_DIRS})
 link_directories(${TBB_LIBRARY_DIRS})
@@ -302,6 +320,9 @@ endif()
 
 if (FREEBSD)
 	FIND_LIBRARY (EXECINFO_LIB execinfo)
+	if (NOT EXECINFO_LIB)
+		message(FATAL_ERROR "You need to install libexecinfo")
+	endif()
 endif()
 
 #find_package(BISON REQUIRED)
@@ -330,11 +351,21 @@ macro(hphp_link target)
 	endif()
 
 	target_link_libraries(${target} ${Boost_LIBRARIES})
+	target_link_libraries(${target} ${LIBUNWIND_LIBRARY})
 	target_link_libraries(${target} ${MYSQL_CLIENT_LIBS})
 	target_link_libraries(${target} ${PCRE_LIBRARY})
 	target_link_libraries(${target} ${ICU_LIBRARIES} ${ICU_I18N_LIBRARIES})
 	target_link_libraries(${target} ${LIBEVENT_LIB})
 	target_link_libraries(${target} ${CURL_LIBRARIES})
+
+if (LIBINOTIFY_LIBRARY)
+	target_link_libraries(${target} ${LIBINOTIFY_LIBRARY})
+endif()
+
+if (LIBICONV_LIBRARY)
+	target_link_libraries(${target} ${LIBICONV_LIBRARY})
+endif()
+
 
 if (LINUX)
 	target_link_libraries(${target} ${CAP_LIB})

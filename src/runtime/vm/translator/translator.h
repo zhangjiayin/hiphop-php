@@ -33,6 +33,7 @@
 #include <runtime/vm/translator/immstack.h>
 #include <runtime/vm/translator/runtime-type.h>
 #include <runtime/vm/translator/fixup.h>
+#include <runtime/vm/translator/writelease.h>
 #include <runtime/vm/debugger_hook.h>
 #include <runtime/base/md5.h>
 
@@ -44,6 +45,10 @@ namespace Transl {
 static const bool trustSigSegv = false;
 
 static const uint32 transCountersPerChunk = 1024 * 1024 / 8;
+
+class TranslatorX64;
+extern TranslatorX64* volatile nextTx64;
+extern __thread TranslatorX64* tx64;
 
 /*
  * REGSTATE_DIRTY when the live register state is spread across the
@@ -251,17 +256,48 @@ class NormalizedInstruction {
                     // instruction has no vector immediate
   std::vector<MemberCode> immVecM;
 
+  unsigned checkedInputs;
   // StackOff: logical delta at *start* of this instruction to
   // stack at tracelet entry.
   int stackOff;
-  bool hasConstImm;
-  bool breaksBB;
-  bool changesPC;
-  bool fuseBranch;
-  bool preppedByRef;    // For FPass*; indicates parameter reffiness
-  bool manuallyAllocInputs;
-  bool invertCond;
-  bool outputPredicted;
+  unsigned hasConstImm:1;
+  unsigned breaksBB:1;
+  unsigned changesPC:1;
+  unsigned fuseBranch:1;
+  unsigned preppedByRef:1;    // For FPass*; indicates parameter reffiness
+  unsigned manuallyAllocInputs:1;
+  unsigned invertCond:1;
+  unsigned outputPredicted:1;
+  unsigned ignoreInnerType:1;
+  /*
+   * skipSync indicates that a previous instruction that should have
+   * adjusted the stack (eg FCall, Req*) didnt, because it could see
+   * that the next one was going to immediately adjust it again
+   * (ie at this point, rVmSp holds the "correct" value, rather
+   *  than the value it had at the beginning of the tracelet)
+   */
+  unsigned skipSync:1;
+  /*
+   * grouped indicates that the tracelet should not be broken
+   * (eg by a side exit) between the preceding instruction and
+   * this one
+   */
+  unsigned grouped:1;
+  /*
+   * guardedThis indicates that we know that ar->m_this is
+   * a valid $this. eg:
+   *
+   *   $this->foo = 1; # needs to check that $this is non-null
+   *   $this->bar = 2; # can skip the check
+   *   return 5;       # can decRef ar->m_this unconditionally
+   */
+  unsigned guardedThis:1;
+  /*
+    noCtor is set on FPushCtorD to say that the ctor is
+    going to be skipped (so dont setup an actrec)
+  */
+  unsigned noCtor:1;
+
   ArgUnion constImm;
   TXFlags m_txFlags;
 
@@ -280,8 +316,14 @@ class NormalizedInstruction {
     outStack2(NULL),
     outStack3(NULL),
     deadLocs(),
+    checkedInputs(0),
     hasConstImm(false),
     invertCond(false),
+    ignoreInnerType(false),
+    skipSync(false),
+    grouped(false),
+    guardedThis(false),
+    noCtor(false),
     m_txFlags(Interp)
   { }
 
@@ -302,7 +344,21 @@ class NormalizedInstruction {
     return (m_txFlags & Native) == Native;
   }
 
-  bool outStackIsUsed() const;
+  void markInputInferred(int i) {
+    if (i < 32) checkedInputs |= 1u << i;
+  }
+
+  bool inputWasInferred(int i) const {
+    return i < 32 && ((checkedInputs >> i) & 1);
+  }
+
+  enum OutputUse {
+    OutputUsed,
+    OutputUnused,
+    OutputInferred,
+    OutputDoesntCare
+  };
+  OutputUse outputIsUsed(DynLocation* output) const;
 };
 
 class TranslationFailedExc : public std::exception {
@@ -618,23 +674,8 @@ private:
 
   virtual void syncWork() = 0;
   virtual void invalidateSrcKey(const SrcKey& sk) = 0;
-  /*
-   * If this returns true, we dont generate guards for any of the
-   * inputs to this instruction (this is essentially to avoid
-   * generating guards on behalf of interpreted instructions).
-   */
-  virtual bool dontGuardAnyInputs(Opcode op) { return false; }
 
 protected:
-  struct PendingFixup {
-    TCA m_tca;
-    Fixup m_fixup;
-    PendingFixup() { }
-    PendingFixup(TCA tca, Fixup fixup) :
-      m_tca(tca), m_fixup(fixup) { }
-  };
-  vector<PendingFixup> m_pendingFixups;
-  FixupMap m_fixupMap;
   void requestResetHighLevelTranslator();
 
   TCA m_resumeHelper;
@@ -644,16 +685,24 @@ protected:
   vector<TransRec> m_translations;
   vector<uint64*>  m_transCounters;
 
+  static Lease s_writeLease;
+  static volatile bool s_replaceInFlight;
+
 public:
 
   Translator();
   virtual ~Translator();
   static Translator* Get();
+  static Lease& WriteLease() {
+    return s_writeLease;
+  }
+  static bool ReplaceInFlight() {
+    return s_replaceInFlight;
+  }
 
   /*
    * Interface between the arch-dependent translator and outside world.
    */
-  virtual void processInit() = 0;
   virtual void requestInit() = 0;
   virtual void requestExit() = 0;
   virtual void analyzeInstr(Tracelet& t, NormalizedInstruction& i) = 0;
@@ -666,6 +715,9 @@ public:
   virtual bool dumpTC() = 0;
   virtual bool dumpTCCode(const char *filename) = 0;
   virtual bool dumpTCData() = 0;
+  virtual void protectCode() = 0;
+  virtual void unprotectCode() = 0;
+  virtual bool isValidCodeAddress(TCA) const = 0;
 
   enum FuncPrologueFlags {
     FuncPrologueNormal      = 0,
@@ -763,6 +815,13 @@ public:
     return debug || RuntimeOption::EvalDumpTC;
   }
 
+  /*
+   * If this returns true, we dont generate guards for any of the
+   * inputs to this instruction (this is essentially to avoid
+   * generating guards on behalf of interpreted instructions).
+   */
+  virtual bool dontGuardAnyInputs(Opcode op) { return false; }
+
 protected:
   PCFilter m_dbgBLPC;
   SrcKeySet m_dbgBLSrcKey;
@@ -780,24 +839,21 @@ public:
   }
 };
 
-extern Translator* transl;
-
 int getStackDelta(const NormalizedInstruction& ni);
 
-/*
- * opcodeChangesPC --
- *
- *   Returns true if the instruction can potentially set PC to point
- *   to something other than the next instruction in the bytecode
- */
-static inline bool
-opcodeChangesPC(const Opcode instr) {
+enum ControlFlowInfo {
+  ControlFlowNone,
+  ControlFlowChangesPC,
+  ControlFlowBreaksBB
+};
+
+static inline ControlFlowInfo
+opcodeControlFlowInfo(const Opcode instr) {
   switch (instr) {
     case OpJmp:
     case OpJmpZ:
     case OpJmpNZ:
     case OpSwitch:
-    case OpFCall:
     case OpRetC:
     case OpRetV:
     case OpRaise:
@@ -808,6 +864,11 @@ opcodeChangesPC(const Opcode instr) {
     case OpIterInitM: // May branch to fail case.
     case OpThrow:
     case OpUnwind:
+    case OpEval:
+    case OpNativeImpl:
+    case OpContHandle:
+      return ControlFlowBreaksBB;
+    case OpFCall:
     case OpIncl:
     case OpInclOnce:
     case OpReq:
@@ -815,13 +876,21 @@ opcodeChangesPC(const Opcode instr) {
     case OpReqDoc:
     case OpReqMod:
     case OpReqSrc:
-    case OpEval:
-    case OpNativeImpl:
-    case OpContHandle:
-      return true;
+      return ControlFlowChangesPC;
     default:
-      return false;
+      return ControlFlowNone;
   }
+}
+
+/*
+ * opcodeChangesPC --
+ *
+ *   Returns true if the instruction can potentially set PC to point
+ *   to something other than the next instruction in the bytecode
+ */
+static inline bool
+opcodeChangesPC(const Opcode instr) {
+  return opcodeControlFlowInfo(instr) >= ControlFlowChangesPC;
 }
 
 /*
@@ -833,12 +902,16 @@ opcodeChangesPC(const Opcode instr) {
  */
 static inline bool
 opcodeBreaksBB(const Opcode instr) {
-  return opcodeChangesPC(instr) && instr != OpFCall;
+  return opcodeControlFlowInfo(instr) == ControlFlowBreaksBB;
 }
+
+bool outputDependsOnInput(const Opcode instr);
 
 extern bool tc_dump();
 const Func* lookupImmutableMethod(const Class* cls, const StringData* name,
                                   bool& magicCall, bool staticLookup);
+
+bool freeLocalsInline();
 
 } } } // HPHP::VM::Transl
 

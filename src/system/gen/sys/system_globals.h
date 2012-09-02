@@ -45,14 +45,12 @@ class SystemGlobals : public Globals {
 public:
   SystemGlobals();
   void initialize();
-  // HHVM global infrastructure
-  Variant hg_global_storage;
 
   Array stgv_Array[1];
   #define s_ReflectionClass$$fetched stgv_Array[0]
   RedeclaredCallInfoConst* stgv_RedeclaredCallInfoConstPtr[1];
   RedeclaredObjectStaticCallbacksConst* stgv_RedeclaredObjectStaticCallbacksConstPtr[1];
-  Variant stgv_Variant[13];
+  Variant stgv_Variant[14];
   #define gvm_HTTP_RAW_POST_DATA stgv_Variant[0]
   #define gvm__COOKIE stgv_Variant[1]
   #define gvm__ENV stgv_Variant[2]
@@ -66,6 +64,7 @@ public:
   #define gvm_argv stgv_Variant[10]
   #define gvm_http_response_header stgv_Variant[11]
   #define k_SID stgv_Variant[12]
+  #define s_Exception$$traceOpts stgv_Variant[13]
   bool stgv_bool[1];
   #define run_pm_php$globals$symbols_php stgv_bool[0]
   double stgv_double[1];

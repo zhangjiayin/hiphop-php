@@ -32,7 +32,15 @@
 #include <runtime/base/util/request_local.h>
 #include <util/case_insensitive.h>
 
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__FreeBSD__)
+/**
+ * We don't actually use param.h in this file,
+ * but other files which use us do, and we want
+ * to enforce clearing of the isset macro from
+ * that header by handling the header now
+ * and wiping it out.
+ */
+# include <sys/param.h>
 # ifdef isset
 #  undef isset
 # endif
@@ -433,6 +441,9 @@ inline Variant throw_missing_file(const char *cls) {
 }
 void throw_instance_method_fatal(const char *name);
 
+void throw_collection_modified();
+void throw_iterator_not_valid();
+
 /**
  * Argument count handling.
  *   - When level is 2, it's from constructors that turn these into fatals
@@ -464,10 +475,12 @@ void throw_unexpected_argument_type(int argNum, const char *fnName,
                                     const char *expected, CVarRef val);
 
 /**
- * Handler for exceptions thrown from object destructors. Implemented in
+ * Handler for exceptions thrown from user functions that we don't
+ * allow exception propagation from.  E.g., object destructors or
+ * certain callback hooks (user profiler). Implemented in
  * program_functions.cpp.
  */
-void handle_destructor_exception();
+void handle_destructor_exception(const char* situation = "Destructor");
 
 /**
  * If RuntimeOption::ThrowBadTypeExceptions is on, we are running in
@@ -646,11 +659,11 @@ public:
   MethodCallPackage();
 
   // e->n() style method call
-  bool methodCall(CObjRef self, CStrRef method, int64 prehash = -1) {
+  bool methodCall(CObjRef self, CStrRef method, strhash_t prehash = -1) {
     return methodCall(self.objectForCall(), method, prehash);
   }
-  bool methodCall(ObjectData *self, CStrRef method, int64 prehash = -1);
-  bool methodCall(CVarRef self, CStrRef method, int64 prehash = -1);
+  bool methodCall(ObjectData *self, CStrRef method, strhash_t prehash = -1);
+  bool methodCall(CVarRef self, CStrRef method, strhash_t prehash = -1);
   // K::n() style call, where K is a parent and n is not static and in an
   // instance method. Lookup is done outside since K is known.
   void methodCallEx(CObjRef self, CStrRef method) {
@@ -669,9 +682,9 @@ public:
     name = &method;
   }
   // e::n() call. e could evaluate to be either a string or object.
-  bool dynamicNamedCall(CVarRef self, CStrRef method, int64 prehash = -1);
+  bool dynamicNamedCall(CVarRef self, CStrRef method, strhash_t prehash = -1);
   // e::n() call where e is definitely a string
-  bool dynamicNamedCall(CStrRef self, CStrRef method, int64 prehash = -1);
+  bool dynamicNamedCall(CStrRef self, CStrRef method, strhash_t prehash = -1);
   // function call
   void functionNamedCall(CVarRef func);
   void functionNamedCall(CStrRef func);

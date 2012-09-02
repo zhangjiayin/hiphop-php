@@ -29,6 +29,8 @@ Variant f_fb_thrift_serialize(CVarRef thing);
 Variant f_fb_thrift_unserialize(CVarRef thing, VRefParam success, VRefParam errcode = null_variant);
 Variant f_fb_serialize(CVarRef thing);
 Variant f_fb_unserialize(CVarRef thing, VRefParam success, VRefParam errcode = null_variant);
+Variant f_fb_compact_serialize(CVarRef thing);
+Variant f_fb_compact_unserialize(CVarRef thing, VRefParam success, VRefParam errcode = null_variant);
 bool f_fb_intercept(CStrRef name, CVarRef handler, CVarRef data = null_variant);
 Variant f_fb_stubout_intercept_handler(CStrRef name, CVarRef obj, CArrRef params, CVarRef data, VRefParam done);
 Variant f_fb_rpc_intercept_handler(CStrRef name, CVarRef obj, CArrRef params, CVarRef data, VRefParam done);
@@ -70,6 +72,8 @@ int64 f_fb_get_last_flush_size();
 Variant f_fb_lazy_stat(CStrRef filename);
 Variant f_fb_lazy_lstat(CStrRef filename);
 String f_fb_lazy_realpath(CStrRef filename);
+String f_fb_gc_collect_cycles();
+void f_fb_gc_detect_cycles(CStrRef filename);
 extern const int64 k_FB_UNSERIALIZE_NONSTRING_VALUE;
 extern const int64 k_FB_UNSERIALIZE_UNEXPECTED_END;
 extern const int64 k_FB_UNSERIALIZE_UNRECOGNIZED_OBJECT_TYPE;
@@ -94,6 +98,8 @@ extern const int64 k_TAINT_TRACE_SELF;
 
 int fb_unserialize_from_buffer(Variant &res, const char *buff, int buff_len,
                                int *pos);
+int fb_compact_unserialize_from_buffer(Variant &res, const char *buff,
+                                       int buff_len, int &pos);
 
 ///////////////////////////////////////////////////////////////////////////////
 }

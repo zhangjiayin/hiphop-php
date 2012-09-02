@@ -270,7 +270,7 @@ void ExpressionList::markParam(int p, bool noRefWrapper) {
     } else {
       param->clearContext(Expression::NoRefWrapper);
     }
-  } else if (!param->hasContext(Expression::RefValue)) {
+  } else if (!param->hasContext(Expression::RefParameter)) {
     param->setContext(Expression::InvokeArgument);
     param->setContext(Expression::RefValue);
     if (noRefWrapper) {
@@ -569,6 +569,7 @@ bool ExpressionList::preOutputCPP(CodeGenerator &cg, AnalysisResultPtr ar,
       m_kind == ListKindLeft ? 0 : n - 1;
     for (unsigned int i = 0; i < n; i++) {
       ExpressionPtr e = m_exps[i];
+      if (i != ix) e->setUnused(true);
       e->preOutputCPP(cg, ar, i == ix ? state : 0);
       if (i != ix) {
         if (e->outputCPPUnneeded(cg, ar)) {
@@ -605,7 +606,7 @@ bool ExpressionList::preOutputCPP(CodeGenerator &cg, AnalysisResultPtr ar,
         }
       }
       if (e->hasCPPTemp() &&
-          Type::SameType(e->getType(), getType())) {
+          Type::SameType(e->getGenType(), getGenType())) {
         string t = e->cppTemp();
         if (noRef) {
           cg_printf("CVarRef %s_nr = wrap_variant(%s);\n",

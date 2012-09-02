@@ -23,6 +23,7 @@
 #include <runtime/ext_hhvm/ext_hhvm.h>
 #include <util/parser/location.h>
 #include <util/fixed_vector.h>
+#include <util/range.h>
 #include <runtime/vm/fixed_string_map.h>
 #include <runtime/vm/indexed_string_map.h>
 
@@ -31,6 +32,7 @@ namespace HPHP {
 // Forward declaration.
 class ClassInfo;
 class ClassInfoVM;
+class ObjectData;
 
 namespace VM {
 
@@ -55,6 +57,13 @@ class PreClass : public AtomicCountable {
   friend class Peephole;
 
  public:
+  enum Hoistable {
+    NotHoistable,
+    Mergeable,
+    MaybeHoistable,
+    AlwaysHoistable
+  };
+
   class Prop {
    public:
     Prop(PreClass* preClass, const StringData* n, Attr attrs,
@@ -175,13 +184,14 @@ class PreClass : public AtomicCountable {
 
   PreClass(Unit* unit, int line1, int line2, Offset o, const StringData* n,
            Attr attrs, const StringData* parent, const StringData* docComment,
-           Id id, bool hoistable);
+           Id id, Hoistable hoistable);
   ~PreClass();
   void atomicRelease();
 
   Unit* unit() const { return m_unit; }
   int line1() const { return m_line1; }
   int line2() const { return m_line2; }
+  Offset getOffset() const { return m_offset; }
   const StringData* name() const { return m_name; }
   CStrRef nameRef() const { return *(String*)(&m_name); }
   Attr attrs() const { return m_attrs; }
@@ -196,13 +206,25 @@ class PreClass : public AtomicCountable {
   const TraitAliasRuleVec& traitAliasRules() const { return m_traitAliasRules; }
   const UserAttributeMap& userAttributes() const { return m_userAttributes; }
 
-  Func* const* methods()    const { return m_methods.accessList(); }
-  Prop* const* properties() const { return m_properties.accessList(); }
-  Const* const* constants() const { return m_constants.accessList(); }
-
-  size_t numMethods()    const { return m_methods.size(); }
-  size_t numProperties() const { return m_properties.size(); }
-  size_t numConstants()  const { return m_constants.size(); }
+  /*
+   *  Funcs, Consts, and Props all behave similarly. Define raw accessors
+   *  foo() and numFoos() for people munging by hand, and ranges.
+   *    methods(); numMethods(); FuncRange allMethods();
+   *    consts(); numConsts(); ConstRange allConsts();
+   *    properties; numProperties(); PropRange allProperties();
+   */
+#define DEF_ACCESSORS(Type, fields, Fields)                                 \
+  Type* const* fields() const { return m_##fields.accessList(); }           \
+  Type**       mutable##Fields() { return m_##fields.mutableAccessList(); } \
+  size_t num##Fields()  const { return m_##fields.size(); }                 \
+  typedef IterRange<Type* const*> Type##Range;                              \
+  Type##Range all##Fields() const {                                         \
+    return Type##Range(fields(), fields() + m_##fields.size() - 1);         \
+  }
+  DEF_ACCESSORS(Func, methods, Methods)
+  DEF_ACCESSORS(Const, constants, Constants)
+  DEF_ACCESSORS(Prop, properties, Properties)
+#undef DEF_ACCESSORS
 
   bool hasMethod(const StringData* methName) const {
     return m_methods.contains(methName);
@@ -245,7 +267,7 @@ private:
   Id m_id;
   int m_builtinPropSize;
   Attr m_attrs;
-  bool m_hoistable;
+  Hoistable m_hoistable;
   const StringData* m_name;
   const StringData* m_parent;
   const StringData* m_docComment;
@@ -330,17 +352,17 @@ class PreClassEmitter {
     const StringData* m_phpCode;
   };
 
-  PreClassEmitter(UnitEmitter& ue, Id id, const StringData* n);
+  PreClassEmitter(UnitEmitter& ue, Id id, const StringData* n,
+                  PreClass::Hoistable hoistable);
   ~PreClassEmitter();
 
   void init(int line1, int line2, Offset offset, Attr attrs,
-            const StringData* parent, bool hoistable,
-            const StringData* docComment);
+            const StringData* parent, const StringData* docComment);
 
   UnitEmitter& ue() const { return m_ue; }
   const StringData* name() const { return m_name; }
   Attr attrs() const { return m_attrs; }
-  void setHoistable(bool b) { m_hoistable = b; }
+  void setHoistable(PreClass::Hoistable h) { m_hoistable = h; }
   Id id() const { return m_id; }
   const MethodVec& methods() const { return m_methods; }
 
@@ -380,7 +402,7 @@ class PreClassEmitter {
   const StringData* m_parent;
   const StringData* m_docComment;
   Id m_id;
-  bool m_hoistable;
+  PreClass::Hoistable m_hoistable;
   BuiltinCtorFunction m_InstanceCtor;
   int m_builtinPropSize;
 
@@ -412,7 +434,8 @@ class PreClassRepoProxy : public RepoProxy {
    public:
     InsertPreClassStmt(Repo& repo, int repoId) : Stmt(repo, repoId) {}
     void insert(const PreClassEmitter& pce, RepoTxn& txn, int64 unitSn,
-                Id preClassId, const StringData* name, bool hoistable);
+                Id preClassId, const StringData* name,
+                PreClass::Hoistable hoistable);
   };
   class GetPreClassesStmt : public RepoProxy::Stmt {
    public:
@@ -431,8 +454,10 @@ class PreClassRepoProxy : public RepoProxy {
 };
 
 typedef AtomicSmartPtr<Class> ClassPtr;
-struct Class : public AtomicCountable {
+class Class : public AtomicCountable {
+public:
   friend class ExecutionContext;
+  friend class HPHP::ObjectData;
   friend class Instance;
 
   enum Avail {
@@ -473,7 +498,7 @@ struct Class : public AtomicCountable {
     PropInitVec();
     const PropInitVec& operator=(const PropInitVec&);
     ~PropInitVec();
-    static PropInitVec* allocSmartAllocated(const PropInitVec& src);
+    static PropInitVec* allocInRequestArena(const PropInitVec& src);
 
     typedef TypedValue* iterator;
     iterator begin() { return m_data; }
@@ -498,9 +523,8 @@ struct Class : public AtomicCountable {
 
 public:
   // Call newClass() instead of directly calling new.
-  static ClassPtr newClass(PreClass* preClass, Class* parent, bool failIsFatal);
-  Class(PreClass* preClass, Class* parent, unsigned classVecLen,
-        bool failIsFatal, bool& fail);
+  static ClassPtr newClass(PreClass* preClass, Class* parent);
+  Class(PreClass* preClass, Class* parent, unsigned classVecLen);
   void atomicRelease();
 
   static size_t sizeForNClasses(unsigned nClasses) {
@@ -525,6 +549,15 @@ public:
 
   Func* const* methods() const { return m_methods.accessList(); }
   size_t numMethods() const { return m_methods.size(); }
+  typedef IterRange<Func*const*> MethodRange;
+  MethodRange methodRange() const {
+    return MethodRange(methods(), methods() + numMethods());
+  }
+  typedef IterRange<Func**> MutableMethodRange;
+  MutableMethodRange mutableMethodRange() {
+    return MutableMethodRange(m_methods.mutableAccessList(),
+                              m_methods.mutableAccessList() + m_methods.size());
+  }
   const SProp* staticProperties() const
     { return m_staticProperties.accessList(); }
   size_t numStaticProperties() const { return m_staticProperties.size(); }
@@ -532,18 +565,18 @@ public:
   size_t numDeclProperties() const { return m_declProperties.size(); }
   const Const* constants() const { return m_constants.accessList(); }
   size_t numConstants() const { return m_constants.size(); }
-  Attr attrs() const { return m_preClass->attrs(); }
+  Attr attrs() const {
+    ASSERT(Attr(m_attrCopy) == m_preClass->attrs());
+    return Attr(m_attrCopy);
+  }
   const Func* getCtor() const { return m_ctor; }
+  const Func* getDtor() const { return m_dtor; }
   const Func* getToString() const { return m_toString; }
   const PreClass* preClass() const { return m_preClass.get(); }
   const ClassInfo* clsInfo() const { return m_clsInfo; }
   const PropInitVec* getPropData() const;
-  void setPropData(PropInitVec* propData) const;
-  HphpArray* getSPropData() const;
-  void setSPropData(HphpArray* sPropData) const;
   bool needInitialization() const { return m_needInitialization; }
-  bool needInstanceInit() const { return m_needInstanceInit; }
-  bool derivesFromBuiltin() const { return m_derivesFromBuiltin; }
+  bool callsCustomInstanceInit() const { return m_callsCustomInstanceInit; }
   const ClassSet& allInterfaces() const { return m_allInterfaces; }
   const std::vector<ClassPtr>& usedTraits() const {
     return m_usedTraits;
@@ -554,6 +587,8 @@ public:
 
   // ObjectData attributes, to be set during Instance initialization.
   int getODAttrs() const { return m_ODAttrs; }
+
+  int builtinPropSize() { return m_builtinPropSize; }
 
   // Interfaces this class declares in its "implements" clause.
   const std::vector<ClassPtr>& declInterfaces() const {
@@ -589,7 +624,7 @@ public:
   bool declaredMethod(const Func* method);
 
   TypedValue* clsCnsGet(const StringData* clsCnsName) const;
-  void initialize(HphpArray*& sPropData) const;
+  DataType clsCnsType(const StringData* clsCnsName) const;
   void initialize() const;
   Class* getCached() const;
   void setCached();
@@ -614,13 +649,14 @@ public:
 
   void getClassInfo(ClassInfoVM* ci);
 
-public: // Offset accessors for the translator
   size_t declPropOffset(Slot index) const {
     ASSERT(index >= 0);
     return sizeof(ObjectData) + m_builtinPropSize
       + index * sizeof(TypedValue);
   }
   static size_t preClassOff() { return offsetof(Class, m_preClass); }
+  static Offset getMethodsOffset() { return offsetof(Class, m_methods); }
+  typedef IndexedStringMap<Func*,false,Slot> MethodMap;
 
 public:
   static hphp_hash_map<const StringData*, const HhbcExtClassInfo*,
@@ -635,7 +671,6 @@ private:
         m_trait(trait), m_method(method), m_modifiers(modifiers) { }
   };
 
-  typedef IndexedStringMap<Func*,false,Slot> MethodMap;
   typedef IndexedStringMap<Const,true,Slot> ConstMap;
   typedef IndexedStringMap<Prop,true,Slot> PropMap;
   typedef IndexedStringMap<SProp,true,Slot> SPropMap;
@@ -643,64 +678,60 @@ private:
   typedef hphp_hash_map<const StringData*, TraitMethodList, string_data_hash,
                         string_data_isame> MethodToTraitListMap;
 
-private:
+  void initialize(TypedValue*& sPropData) const;
   HphpArray* initClsCnsData() const;
   PropInitVec* initProps() const;
-  HphpArray* initSProps() const;
+  TypedValue* initSProps() const;
+  void setPropData(PropInitVec* propData) const;
+  void setSPropData(TypedValue* sPropData) const;
+  TypedValue* getSPropData() const;
+  TypedValue* cnsNameToTV(const StringData* name, Slot& slot) const;
 
   void addImportTraitMethod(const TraitMethod &traitMethod,
                             const StringData  *methName);
-  bool importTraitMethod(const TraitMethod&  traitMethod,
+  void importTraitMethod(const TraitMethod&  traitMethod,
                          const StringData*   methName,
-                         MethodMap::Builder& curMethodMap,
-                         bool                failIsFatal);
+                         MethodMap::Builder& curMethodMap);
   ClassPtr findSingleTraitWithMethod(const StringData* methName);
   void setImportTraitMethodModifiers(const StringData* methName,
                                      ClassPtr          traitCls,
                                      Attr              modifiers);
-  bool importTraitMethods(MethodMap::Builder& curMethodMap, bool failIsFatal);
+  void importTraitMethods(MethodMap::Builder& curMethodMap);
   void addTraitPropInitializers(bool staticProps);
-  bool applyTraitRules(bool failIsFatal);
-  bool applyTraitPrecRule(const PreClass::TraitPrecRule& rule,
-                          bool                           failIsFatal);
-  bool applyTraitAliasRule(const PreClass::TraitAliasRule& rule,
-                           bool                            failIsFatal);
-  bool importTraitProps(PropMap::Builder& curPropMap,
-                        SPropMap::Builder& curSPropMap,
-                        bool failIsFatal);
-  bool importTraitInstanceProp(ClassPtr    trait,
+  void applyTraitRules();
+  void applyTraitPrecRule(const PreClass::TraitPrecRule& rule);
+  void applyTraitAliasRule(const PreClass::TraitAliasRule& rule);
+  void importTraitProps(PropMap::Builder& curPropMap,
+                        SPropMap::Builder& curSPropMap);
+  void importTraitInstanceProp(ClassPtr    trait,
                                Prop&       traitProp,
                                TypedValue& traitPropVal,
-                               PropMap::Builder& curPropMap,
-                               bool        failIsFatal);
-  bool importTraitStaticProp(ClassPtr trait,
+                               PropMap::Builder& curPropMap);
+  void importTraitStaticProp(ClassPtr trait,
                              SProp&   traitProp,
                              PropMap::Builder& curPropMap,
-                             SPropMap::Builder& curSPropMap,
-                             bool     failIsFatal);
+                             SPropMap::Builder& curSPropMap);
   void addTraitAlias(const StringData* traitName,
                      const StringData* origMethName,
                      const StringData* newMethName);
 
-  bool checkInterfaceMethods(bool failIsFatal);
-  bool methodOverrideOK(const Func* parentMethod, const Func* method,
-                        bool FailIsFatal);
+  void checkInterfaceMethods();
+  void methodOverrideCheck(const Func* parentMethod, const Func* method);
 
   static bool compatibleTraitPropInit(TypedValue& tv1, TypedValue& tv2);
   void removeSpareTraitAbstractMethods();
 
-  bool setParent(bool failIsFatal);
-  bool setSpecial(bool failIsFatal);
-  bool setMethods(bool failIsFatal);
-  bool setODAttributes(bool failIsFatal);
-  bool setConstants(bool failIsFatal);
-  bool setProperties(bool failIsFatal);
-  bool setInitializers(bool failIsFatal);
-  bool setInterfaces(bool failIsFatal);
-  bool setClassVec(bool failIsFatal);
-  bool setUsedTraits(bool failIsFatal);
+  void setParent();
+  void setSpecial();
+  void setMethods();
+  void setODAttributes();
+  void setConstants();
+  void setProperties();
+  void setInitializers();
+  void setInterfaces();
+  void setClassVec();
+  void setUsedTraits();
 
-private:
   PreClassPtr m_preClass;
   ClassPtr m_parent;
   std::vector<ClassPtr> m_declInterfaces; // interfaces this class declares in
@@ -720,6 +751,7 @@ private:
   Slot m_traitsBeginIdx;
   Slot m_traitsEndIdx;
   Func* m_ctor;
+  Func* m_dtor;
   Func* m_toString;
 
   // Vector of 86pinit() methods that need to be called to complete instance
@@ -733,10 +765,10 @@ private:
   InitVec m_pinitVec;
   InitVec m_sinitVec;
   const ClassInfo* m_clsInfo;
-  bool m_needInitialization; // True if there are any __[ps]init() methods.
-  bool m_needInstanceInit; // True if we should always call __init__
-                           // on new instances of this class
-  bool m_derivesFromBuiltin;
+  unsigned m_needInitialization : 1;      // any __[ps]init() methods?
+  unsigned m_callsCustomInstanceInit : 1; // should we always call __init__
+                                          // on new instances?
+  unsigned m_attrCopy : 30;               // cache of m_preClass->attrs().
   int m_ODAttrs;
 
   int m_builtinPropSize;

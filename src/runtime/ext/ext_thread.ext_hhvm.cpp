@@ -1,10 +1,25 @@
+/*
+   +----------------------------------------------------------------------+
+   | HipHop for PHP                                                       |
+   +----------------------------------------------------------------------+
+   | Copyright (c) 2010- Facebook, Inc. (http://www.facebook.com)         |
+   | Copyright (c) 1997-2010 The PHP Group                                |
+   +----------------------------------------------------------------------+
+   | This source file is subject to version 3.01 of the PHP license,      |
+   | that is bundled with this package in the file LICENSE, and is        |
+   | available through the world-wide-web at the following url:           |
+   | http://www.php.net/license/3_01.txt                                  |
+   | If you did not receive a copy of the PHP license and are unable to   |
+   | obtain it through the world-wide-web, please send a note to          |
+   | license@php.net so we can mail you a copy immediately.               |
+   +----------------------------------------------------------------------+
+*/
 #include <runtime/ext_hhvm/ext_hhvm.h>
 #include <runtime/base/builtin_functions.h>
 #include <runtime/base/array/array_init.h>
 #include <runtime/ext/ext.h>
 #include <runtime/vm/class.h>
 #include <runtime/vm/runtime.h>
-#include <runtime/vm/exception_gate.h>
 #include <exception>
 
 namespace HPHP {
@@ -19,7 +34,6 @@ _ZN4HPHP24f_hphp_is_service_threadEv
 bool fh_hphp_is_service_thread() asm("_ZN4HPHP24f_hphp_is_service_threadEv");
 
 TypedValue* fg_hphp_is_service_thread(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -39,7 +53,7 @@ TypedValue* fg_hphp_is_service_thread(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -53,7 +67,6 @@ _ZN4HPHP29f_hphp_service_thread_startedEv
 void fh_hphp_service_thread_started() asm("_ZN4HPHP29f_hphp_service_thread_startedEv");
 
 TypedValue* fg_hphp_service_thread_started(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -74,7 +87,7 @@ TypedValue* fg_hphp_service_thread_started(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -100,7 +113,6 @@ TypedValue * fg1_hphp_service_thread_stopped(TypedValue* rv, HPHP::VM::ActRec* a
 }
 
 TypedValue* fg_hphp_service_thread_stopped(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -127,7 +139,7 @@ TypedValue* fg_hphp_service_thread_stopped(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -142,7 +154,6 @@ _ZN4HPHP31f_hphp_thread_is_warmup_enabledEv
 bool fh_hphp_thread_is_warmup_enabled() asm("_ZN4HPHP31f_hphp_thread_is_warmup_enabledEv");
 
 TypedValue* fg_hphp_thread_is_warmup_enabled(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -162,7 +173,7 @@ TypedValue* fg_hphp_thread_is_warmup_enabled(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -176,7 +187,6 @@ _ZN4HPHP32f_hphp_thread_set_warmup_enabledEv
 void fh_hphp_thread_set_warmup_enabled() asm("_ZN4HPHP32f_hphp_thread_set_warmup_enabledEv");
 
 TypedValue* fg_hphp_thread_set_warmup_enabled(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -197,7 +207,7 @@ TypedValue* fg_hphp_thread_set_warmup_enabled(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -212,7 +222,6 @@ _ZN4HPHP20f_hphp_get_thread_idEv
 long long fh_hphp_get_thread_id() asm("_ZN4HPHP20f_hphp_get_thread_idEv");
 
 TypedValue* fg_hphp_get_thread_id(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -232,7 +241,7 @@ TypedValue* fg_hphp_get_thread_id(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 

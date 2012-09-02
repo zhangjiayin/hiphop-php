@@ -286,7 +286,6 @@ class Array : protected ArrayBase {
   const Variant operator[](int64   key) const;
   const Variant operator[](double  key) const;
   const Variant operator[](litstr  key) const;
-  const Variant operator[](const StringData *key) const;
   const Variant operator[](CStrRef key) const;
   const Variant operator[](CVarRef key) const;
 
@@ -544,6 +543,13 @@ class Array : protected ArrayBase {
   void serialize(VariableSerializer *serializer,
                  bool isObject = false) const;
   void unserialize(VariableUnserializer *uns);
+  
+  // Transfer ownership of our reference to this ArrayData.
+  ArrayData* detach() {
+    ArrayData* ret = m_px;
+    m_px = NULL;
+    return ret;
+  }
 
   /**
    * Memory allocator methods.

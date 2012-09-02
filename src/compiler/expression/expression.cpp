@@ -150,6 +150,11 @@ Expression::ExprClass Expression::getExprClass() const {
   return cls;
 }
 
+FileScopeRawPtr Expression::getUsedScalarScope(CodeGenerator& cg) {
+  return cg.getLiteralScope() ?
+    cg.getLiteralScope() : getFileScope();
+}
+
 bool Expression::getEffectiveScalar(Variant &v) {
   if (is(KindOfExpressionList)) {
     ExpressionRawPtr sub = static_cast<ExpressionList*>(this)->listValue();
@@ -245,6 +250,13 @@ TypePtr Expression::getType() {
   return Type::Any;
 }
 
+TypePtr Expression::getGenType() {
+  if (m_expectedType) return m_expectedType;
+  if (m_implementedType) return m_implementedType;
+  if (m_actualType) return m_actualType;
+  return Type::Any;
+}
+
 TypePtr Expression::getCPPType() {
   if (m_implementedType) return m_implementedType;
   if (m_actualType) return m_actualType;
@@ -256,6 +268,9 @@ TypePtr Expression::propagateTypes(AnalysisResultConstPtr ar, TypePtr inType) {
   TypePtr ret = inType;
 
   while (e) {
+    if (e->getAssertedType() && !getAssertedType()) {
+      setAssertedType(e->getAssertedType());
+    }
     TypePtr inferred = Type::Inferred(ar, ret, e->m_actualType);
     if (!inferred) {
       break;
@@ -607,21 +622,38 @@ ExpressionPtr Expression::getCanonTypeInfPtr() const {
   if (!(m_context & (LValue|RefValue|UnsetContext|DeepReference))) {
     return m_canonPtr;
   }
-  if (!m_canonPtr->getActualType()) return ExpressionPtr();
+  if (!hasAnyContext(AccessContext|ObjectContext) ||
+      !m_canonPtr->getActualType()) {
+    return ExpressionPtr();
+  }
   switch (m_canonPtr->getActualType()->getKindOf()) {
   case Type::KindOfArray:
     {
-      if (!is(Expression::KindOfSimpleVariable)) return ExpressionPtr();
+      if (!hasContext(AccessContext)) break;
+      if (m_canonPtr->getAssertedType()) return m_canonPtr;
+      if (!is(Expression::KindOfSimpleVariable)) break;
       SimpleVariableConstPtr sv(
         static_pointer_cast<const SimpleVariable>(shared_from_this()));
       if (sv->couldBeAliased()) return ExpressionPtr();
-      if ((hasContext(LValue) && hasContext(AccessContext)) &&
+      if (hasContext(LValue) &&
           !(m_context & (RefValue | UnsetContext | DeepReference))) {
         return m_canonPtr;
       }
     }
     break;
-  // TODO(stephentu): more cases for strings + objects
+  case Type::KindOfObject:
+    {
+      if (!hasContext(ObjectContext)) break;
+      if (m_canonPtr->getAssertedType()) return m_canonPtr;
+      if (!is(Expression::KindOfSimpleVariable)) break;
+      SimpleVariableConstPtr sv(
+        static_pointer_cast<const SimpleVariable>(shared_from_this()));
+      if (sv->couldBeAliased()) return ExpressionPtr();
+      if (hasContext(LValue) &&
+          !(m_context & (RefValue | UnsetContext | DeepReference))) {
+        return m_canonPtr;
+      }
+    }
   default:
     break;
   }
@@ -1021,6 +1053,7 @@ bool Expression::preOutputCPP(CodeGenerator &cg, AnalysisResultPtr ar,
   }
 
   if (!ret || cg.inExpression()) {
+    if (paramList) kidState |= FixOrder;
     bool skipLast = !stashAll;
     int lastState = kidState | StashByRef;
     if (stashAll) lastState |= StashVars;
@@ -1426,6 +1459,26 @@ bool Expression::canUseFastCast(AnalysisResultPtr ar) {
     if (m_assertedType) return true;
     if (is(KindOfSimpleVariable) &&
         static_cast<SimpleVariable*>(this)->isGuarded()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool Expression::outputCPPGuardedObjectPtr(CodeGenerator &cg) {
+  if (is(KindOfSimpleVariable) &&
+      static_cast<SimpleVariable*>(this)->isGuarded()) {
+    TypePtr at = getActualType();
+    if (at && at->is(Type::KindOfObject)) {
+      TypePtr it = getImplementedType();
+      if (it && !it->is(Type::KindOfObject)) {
+        TypePtr et = getExpectedType();
+        if (!et || !et->is(Type::KindOfObject)) {
+          cg_printf(".getObjectData()");
+          return true;
+        }
+      }
+      cg_printf(".get()");
       return true;
     }
   }

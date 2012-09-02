@@ -146,7 +146,7 @@ MemoryManager::MemoryManager() : m_enabled(false) {
   threadStats(m_allocated, m_deallocated, m_cactive, m_cactiveLimit);
 #endif
   resetStats();
-  m_stats.maxBytes = 0;
+  m_stats.maxBytes = INT64_MAX;
 }
 
 void MemoryManager::resetStats() {
@@ -183,7 +183,6 @@ void MemoryManager::refreshStatsHelperStop() {
 void MemoryManager::add(SmartAllocatorImpl *allocator) {
   ASSERT(allocator);
   m_smartAllocators.push_back(allocator);
-  ASSERT(&allocator->getStats() == &m_stats);
 }
 
 void MemoryManager::sweepAll() {
@@ -207,9 +206,6 @@ void MemoryManager::rollback() {
 }
 
 void MemoryManager::logStats() {
-  for (unsigned int i = 0; i < m_smartAllocators.size(); i++) {
-    m_smartAllocators[i]->logStats();
-  }
   LeakDetectable::LogMallocStats();
 }
 

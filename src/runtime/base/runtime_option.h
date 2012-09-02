@@ -112,6 +112,8 @@ public:
   static int ServerDanglingWait;
   static bool ServerHarshShutdown;
   static bool ServerEvilShutdown;
+  static int ServerShutdownListenWait;
+  static int ServerShutdownListenNoWork;
   static int GzipCompressionLevel;
   static std::string ForceCompressionURL;
   static std::string ForceCompressionCookie;
@@ -373,7 +375,18 @@ public:
   static bool EnableStrict;
   static int StrictLevel;
   static bool StrictFatal;
+
+  /*
+   * Maximum number of elements on the VM execution stack.
+   */
   static uint64 EvalVMStackElms;
+
+  /*
+   * Initial space reserved for the global variable environment (in
+   * number of global variables).
+   */
+  static uint32_t EvalVMInitialGlobalTableSize;
+
   static bool EvalJit;
   static bool EvalAllowHhas;
   static bool EvalJitNoGdb;

@@ -43,9 +43,12 @@ RegAlloc::RegAlloc(RegSet callerSaved,
                    SpillFill* spf)
   : m_callerSaved(callerSaved),
     m_calleeSaved(calleeSaved),
+    m_numRegs(callerSaved.size() + calleeSaved.size()),
     m_allRegs(callerSaved | calleeSaved),
-    m_spf(spf), m_freezeCount(0) {
-    m_numRegs = callerSaved.size() + calleeSaved.size();
+    m_spf(spf),
+    m_freezeCount(0)
+{
+  ASSERT(m_calleeSaved - m_callerSaved == m_calleeSaved);
   reset();
 }
 
@@ -69,29 +72,35 @@ RegAlloc::freeRegInfo(RegInfo *r) {
  */
 RegInfo*
 RegAlloc::alloc(const Location& loc, DataType type, RegInfo::State state,
-                bool needsFill) {
+                bool needsFill, int64 immVal, PhysReg target) {
   RegInfo   *retval = NULL;
-  RegContent cont   = RegContent(loc);
+  RegContent cont   = RegContent(loc, immVal);
 
   if (loc.isValid()) {
     // Best possible result: it's already there.
     PhysReg pr;
     if (mapGet(m_contToRegMap, cont, &pr)) {
-      retval = &m_info[pr];
+      retval = physRegToInfo(pr);
       ASSERT(state == RegInfo::DIRTY || state == RegInfo::CLEAN);
       ASSERT(retval->m_state == RegInfo::CLEAN ||
              retval->m_state == RegInfo::DIRTY);
       ASSERT(retval->m_cont == cont);
-      TRACE(1, "alloc (%s, %d) t%d state %d hit r%d\n",
+      TRACE(1, "alloc (%s, %lld) t%d state %d hit r%d\n",
             loc.spaceName(), loc.offset, type, state, retval->m_pReg);
       needsFill = false;
     }
   }
   if (!retval) {
     // Oops, not there yet. First look for a free one.
-    retval = findFreeReg(loc);
+    if (target != InvalidReg) {
+      ASSERT(regIsFree(target));
+      retval = physRegToInfo(target);
+      m_spf->poison(retval->m_pReg);
+    } else {
+      retval = findFreeReg(loc);
+    }
     if (retval) {
-      TRACE(1, "alloc (%s, %d) found a free reg %d state %d\n",
+      TRACE(1, "alloc (%s, %lld) found a free reg %d state %d\n",
             loc.spaceName(), loc.offset, retval->m_pReg, retval->m_state);
     }
   }
@@ -104,13 +113,13 @@ RegAlloc::alloc(const Location& loc, DataType type, RegInfo::State state,
     // immobile, allowing the register allocator to use whatever policy
     // it wants.
     PhysReg lruPr = m_lru[m_numRegs - 1];
-    retval = &m_info[lruPr];
+    retval = physRegToInfo(lruPr);
 
     // This epoch mechanism ensures that we aren't forcefully killing a
     // register that still might need preservation.
     ASSERT(retval->m_epoch < m_epoch);
 
-    TRACE(1, "alloc (%s, %d) found a %s victim reg r%d\n",
+    TRACE(1, "alloc (%s, %lld) found a %s victim reg r%d\n",
           loc.spaceName(), loc.offset,
           retval->m_state == RegInfo::CLEAN ? "clean" : "dirty",
           retval->m_pReg);
@@ -130,10 +139,14 @@ RegAlloc::alloc(const Location& loc, DataType type, RegInfo::State state,
 
   ASSERT(retval);
   retval->m_epoch = m_epoch;
-  TRACE(1, "alloc (%s, %d) t%d state %d r%d fill? %d\n",
+  TRACE(1, "alloc (%s, %lld) t%d state %d r%d fill? %d\n",
         loc.spaceName(), loc.offset, type, state, retval->m_pReg, needsFill);
-  if (needsFill) {
-    m_spf->fill(loc, retval->m_pReg);
+  if (needsFill && !IS_NULL_TYPE(type)) {
+    if (loc.isLiteral()) {
+      m_spf->loadImm(immVal, retval->m_pReg);
+    } else {
+      m_spf->fill(loc, retval->m_pReg);
+    }
   }
 
   // Can't happen: if we're evicting a dirty register, we should have set
@@ -150,14 +163,26 @@ RegAlloc::alloc(const Location& loc, DataType type, RegInfo::State state,
 }
 
 void
-RegAlloc::allocInputReg(const NormalizedInstruction& ni, int index) {
-  const RuntimeType& rtt = ni.inputs[index]->rtt;
+RegAlloc::allocInputReg(const NormalizedInstruction& ni, int index,
+                        PhysReg target /* = InvalidReg */) {
+  RuntimeType& rtt = ni.inputs[index]->rtt;
   if (rtt.isIter()) {
+    // Note: if this changes to enregister iterators unwinding will
+    // have to be updated.
     return;
   }
+
   DataType t = rtt.outerType();
   if (t == KindOfInvalid) return;
-  (void) alloc(ni.inputs[index]->location, t, RegInfo::CLEAN, true);
+
+  Location& loc = ni.inputs[index]->location;
+
+  int64 litVal = 0;
+  if (loc.isLiteral()) {
+    litVal = rtt.valueGeneric();
+  }
+
+  (void) alloc(loc, t, RegInfo::CLEAN, true, litVal, target);
 }
 
 void
@@ -209,7 +234,7 @@ void
 RegAlloc::markAsClean(const Location& loc) {
   PhysReg    pr = mapGet(m_contToRegMap, RegContent(loc), InvalidReg);
   if (pr != InvalidReg) {
-    stateTransition(&m_info[pr], RegInfo::CLEAN);
+    stateTransition(physRegToInfo(pr), RegInfo::CLEAN);
   }
 }
 
@@ -217,7 +242,7 @@ void
 RegAlloc::invalidate(const Location& loc) {
   ContToRegMap::iterator i = m_contToRegMap.find(RegContent(loc));
   if (i != m_contToRegMap.end()) {
-    freeRegInfo(&m_info[i->second]);
+    freeRegInfo(physRegToInfo(i->second));
   }
 }
 
@@ -236,7 +261,7 @@ RegAlloc::reset() {
   // m_info is sparse.
   for (int i = 0; i < kMaxRegs; ++i) {
     m_info[i].m_epoch = 0;
-    m_info[i].m_pReg = i;
+    m_info[i].m_pReg = PhysReg(i);
     m_info[i].m_cont = RegContent();
     m_info[i].m_type = KindOfInvalid;
     m_info[i].m_state = RegInfo::INVALID;
@@ -245,8 +270,8 @@ RegAlloc::reset() {
   PhysReg pr;
   for (int i = 0; all.findFirst(pr); i++) {
     all.remove(pr);
-    m_info[pr].m_pReg = pr;
-    stateTransition(&m_info[pr], RegInfo::FREE);
+    physRegToInfo(pr)->m_pReg = PhysReg(pr);
+    stateTransition(physRegToInfo(pr), RegInfo::FREE);
     // Put the most favorable register last, so it is picked first.
     m_lru[(m_numRegs - 1) - i] = pr;
   }
@@ -335,17 +360,18 @@ void RegAlloc::reconcile(RegAlloc& branch) {
         if (branch.regIsDirty(oldReg)) {
           branch.cleanReg(oldReg);
         }
-        branch.freeRegInfo(&branch.m_info[oldReg]);
+        branch.freeRegInfo(branch.physRegToInfo(oldReg));
       }
 
-      branch.freeRegInfo(&branch.m_info[r->m_pReg]);
-      branch.assignRegInfo(&branch.m_info[r->m_pReg],
+      branch.freeRegInfo(branch.physRegToInfo(r->m_pReg));
+      branch.assignRegInfo(branch.physRegToInfo(r->m_pReg),
                            r->m_cont,
                            RegInfo::CLEAN,
                            r->m_type);
       branch.verify();
 
-      if (r->m_cont.m_kind == RegContent::Int) {
+      if (r->m_cont.m_kind == RegContent::Int ||
+          r->m_cont.m_loc.isLiteral()) {
         ASSERT(r->m_state == RegInfo::CLEAN);
         branch.m_spf->loadImm(r->m_cont.m_int, r->m_pReg);
       } else if (oldReg != InvalidReg) {
@@ -367,7 +393,7 @@ void RegAlloc::reconcile(RegAlloc& branch) {
 
 void
 RegAlloc::cleanReg(PhysReg reg) {
-  RegInfo* r = &m_info[reg];
+  RegInfo* r = physRegToInfo(reg);
   ASSERT(r->m_state == RegInfo::DIRTY);
   spill(r);
   stateTransition(r, RegInfo::CLEAN);
@@ -389,11 +415,12 @@ RegAlloc::cleanLoc(const Location& loc) {
   RegContent cont(loc);
   PhysReg pr = mapGet(m_contToRegMap, cont, InvalidReg);
   ASSERT(pr != InvalidReg);
-  ASSERT(m_info[pr].m_state == RegInfo::CLEAN ||
-         m_info[pr].m_state == RegInfo::DIRTY);
-  if (m_info[pr].m_state == RegInfo::DIRTY) {
-    spill(&m_info[pr]);
-    stateTransition(&m_info[pr], RegInfo::CLEAN);
+  RegInfo* info = physRegToInfo(pr);
+  ASSERT(info->m_state == RegInfo::CLEAN ||
+         info->m_state == RegInfo::DIRTY);
+  if (info->m_state == RegInfo::DIRTY) {
+    spill(info);
+    stateTransition(info, RegInfo::CLEAN);
   }
 }
 
@@ -423,11 +450,11 @@ void RegAlloc::spill(RegInfo *toSpill) {
   if (toSpill->m_type == KindOfInvalid) {
     // KindOfInvalid outputs are auto-spilled; it is the translator's
     // responsibility to keep them sync'ed in memory and registers.
-    TRACE(1, "spill: (%s, %d) skipping invalid output\n",
+    TRACE(1, "spill: (%s, %lld) skipping invalid output\n",
           toSpill->m_cont.m_loc.spaceName(), toSpill->m_cont.m_loc.offset);
     return;
   }
-  TRACE(1, "spill: (%s, %d) <- type %d, r%d\n",
+  TRACE(1, "spill: (%s, %lld) <- type %d, r%d\n",
         toSpill->m_cont.m_loc.spaceName(), toSpill->m_cont.m_loc.offset,
         toSpill->m_type, toSpill->m_pReg);
   m_spf->spill(toSpill->m_cont.m_loc, toSpill->m_type, toSpill->m_pReg, true);
@@ -503,7 +530,7 @@ void RegAlloc::lruBack(RegInfo* r) {
 RegInfo*
 RegAlloc::physRegToInfo(PhysReg reg) const {
   ASSERT(isValidReg(reg));
-  return const_cast<RegInfo*>(&m_info[reg]);
+  return const_cast<RegInfo*>(&m_info[int(reg)]);
 }
 
 /*
@@ -533,7 +560,7 @@ RegAlloc::findFreeReg(const Location& loc) {
     PhysReg pr;
     while (favoriteRegs.findFirst(pr)) {
       favoriteRegs.remove(pr);
-      RegInfo* r = &m_info[pr];
+      RegInfo* r = physRegToInfo(pr);
       if (r->m_state == RegInfo::FREE) {
         m_spf->poison(r->m_pReg);
         return r;
@@ -549,8 +576,8 @@ RegAlloc::assignRegInfo(RegInfo *regInfo, const RegContent &cont,
                         RegInfo::State state, DataType type) {
   ASSERT(regInfo);
   ASSERT(cont.isValid());
-  ASSERT(!cont.isInt() || state == RegInfo::CLEAN);
-  ASSERT(!cont.isInt() || type == KindOfInt64);
+  ASSERT(IMPLIES(cont.isInt(), state == RegInfo::CLEAN));
+  ASSERT(IMPLIES(cont.isInt(), type == KindOfInt64));
 
   regInfo->m_cont  = cont;
   regInfo->m_type  = type;
@@ -599,9 +626,10 @@ RegAlloc::getImmReg(int64 immVal, bool allowAllocate /* = true */) {
   // Check if val is already in some reg, and return it if so.
   PhysReg r;
   if (mapGet(m_contToRegMap, cont, &r)) {
-    ASSERT(m_info[r].m_cont == cont);
-    ASSERT(m_info[r].m_state == RegInfo::CLEAN);
-    lruFront(&m_info[r]);
+    RegInfo* info = physRegToInfo(r);
+    ASSERT(info->m_cont == cont);
+    ASSERT(info->m_state == RegInfo::CLEAN);
+    lruFront(info);
     return r;
   }
 
@@ -660,7 +688,7 @@ RegAlloc::scrubStackEntries(int firstUnreachable) {
     if (r->m_cont.isLoc() &&
         r->m_cont.m_loc.space == Location::Stack &&
         r->m_cont.m_loc.offset >= firstUnreachable) {
-      TRACE(1, "scrubbing dead stack value: (Stack, %d)\n",
+      TRACE(1, "scrubbing dead stack value: (Stack, %lld)\n",
             r->m_cont.m_loc.offset);
       ASSERT(r->m_state == RegInfo::CLEAN || r->m_state == RegInfo::DIRTY);
       stateTransition(r, RegInfo::CLEAN);
@@ -676,7 +704,7 @@ RegAlloc::scrubStackRange(int firstToDiscard, int lastToDiscard) {
         r->m_cont.m_loc.space == Location::Stack &&
         r->m_cont.m_loc.offset >= firstToDiscard &&
         r->m_cont.m_loc.offset <= lastToDiscard) {
-      TRACE(1, "scrubbing dead stack value: (Stack, %d)\n",
+      TRACE(1, "scrubbing dead stack value: (Stack, %lld)\n",
             r->m_cont.m_loc.offset);
       ASSERT(r->m_state == RegInfo::CLEAN || r->m_state == RegInfo::DIRTY);
       stateTransition(r, RegInfo::CLEAN);
@@ -686,7 +714,10 @@ RegAlloc::scrubStackRange(int firstToDiscard, int lastToDiscard) {
 }
 
 void
-RegAlloc::swapRegisters(PhysReg r1, PhysReg r2) {
+RegAlloc::swapRegisters(PhysReg pr1, PhysReg pr2) {
+  int r1 = int(pr1);
+  int r2 = int(pr2);
+
   ASSERT(m_info[r1].m_state != RegInfo::INVALID &&
          m_info[r1].m_state != RegInfo::FREE);
   ASSERT(m_info[r2].m_state != RegInfo::INVALID &&
@@ -695,13 +726,19 @@ RegAlloc::swapRegisters(PhysReg r1, PhysReg r2) {
   RegContent c2 = m_info[r2].m_cont;
   std::swap(m_info[r1], m_info[r2]);
 
+  TRACE(1, "swap registers %d <---> %d\n", r1, r2);
+
   // pReg
-  m_info[r1].m_pReg = r1;
-  m_info[r2].m_pReg = r2;
+  m_info[r1].m_pReg = PhysReg(r1);
+  m_info[r2].m_pReg = PhysReg(r2);
 
   // content map.
-  if (m_info[r2].m_state != RegInfo::SCRATCH) m_contToRegMap[c1] = r2;
-  if (m_info[r1].m_state != RegInfo::SCRATCH) m_contToRegMap[c2] = r1;
+  if (m_info[r2].m_state != RegInfo::SCRATCH) {
+    m_contToRegMap[c1] = PhysReg(r2);
+  }
+  if (m_info[r1].m_state != RegInfo::SCRATCH) {
+    m_contToRegMap[c2] = PhysReg(r1);
+  }
 
   // consider this a touch on both regs.
   lruFront(&m_info[r2]);
@@ -718,7 +755,7 @@ RegAlloc::verify() {
   RegSet lruRegs;
   for (int i = 0; i < m_numRegs; ++i) {
     PhysReg pr = m_lru[i];
-    RegInfo* r = &m_info[pr];
+    RegInfo* r = physRegToInfo(pr);
     ASSERT(r->m_pReg == pr);
     // The state is reasonable
     ASSERT(r->m_state == RegInfo::FREE ||
@@ -745,13 +782,13 @@ RegAlloc::verify() {
   for (ContToRegMap::const_iterator lri = m_contToRegMap.begin();
        lri != m_contToRegMap.end(); ++lri) {
     const RegContent& cont = lri->first;
-    const RegInfo* ri = &m_info[lri->second];
+    const RegInfo* ri = physRegToInfo(lri->second);
     // The location and mapping are consistent.
     ASSERT(ri->m_cont == cont);
     // If it's a location, make sure it's is valid.
-    ASSERT(!(ri->m_cont.isLoc()) || ri->m_cont.m_loc.isValid());
+    ASSERT(IMPLIES(ri->m_cont.isLoc(), ri->m_cont.m_loc.isValid()));
     // If it's an integer/immediate, make sure it's clean.
-    ASSERT(!(ri->m_cont.isInt()) || ri->m_state == RegInfo::CLEAN);
+    ASSERT(IMPLIES(ri->m_cont.isInt(), ri->m_state == RegInfo::CLEAN));
     // The register is live.
     ASSERT(ri->m_state != RegInfo::FREE);
   }

@@ -17,6 +17,8 @@
 #ifndef __HPHP_CONCURRENT_SHARED_STORE_H__
 #define __HPHP_CONCURRENT_SHARED_STORE_H__
 
+#define TBB_PREVIEW_CONCURRENT_PRIORITY_QUEUE 1
+
 #include <runtime/base/shared/shared_store_base.h>
 #include <runtime/base/complex_types.h>
 #include <runtime/base/shared/shared_variant.h>
@@ -103,17 +105,16 @@ protected:
 
   tbb::concurrent_priority_queue<ExpirationPair,
                                  ExpirationCompare> m_expQueue;
+  typedef tbb::concurrent_hash_map<const char*, int, charHashCompare>
+    ExpMap;
+  ExpMap m_expMap;
 
   uint64 m_purgeCounter;
 
   // Should be called outside m_lock
   void purgeExpired();
 
-  void addToExpirationQueue(const char* key, int64 etime) {
-    const char *copy = strdup(key);
-    ExpirationPair p(copy, etime);
-    m_expQueue.push(p);
-  }
+  void addToExpirationQueue(const char* key, int64 etime);
 
   bool handleUpdate(CStrRef key, SharedVariant* svar);
   bool handlePromoteObj(CStrRef key, SharedVariant* svar, CVarRef valye);

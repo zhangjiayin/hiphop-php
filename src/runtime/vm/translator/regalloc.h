@@ -42,7 +42,7 @@ static const int kMaxRegs = 64;
  * actually be able to allocate registers.
  */
 typedef register_name_t PhysReg;
-static const PhysReg InvalidReg = -1;
+static const PhysReg InvalidReg = x64::reg::noreg;
 
 class RegSet {
   uint64_t m_bits;
@@ -53,7 +53,7 @@ class RegSet {
 
  public:
   RegSet() : m_bits(0) { }
-  explicit RegSet(PhysReg pr) : m_bits(1 << pr) { }
+  explicit RegSet(PhysReg pr) : m_bits(1 << int(pr)) { }
 
   // union
   RegSet operator| (const RegSet& rhs) const {
@@ -88,12 +88,12 @@ class RegSet {
   }
 
   RegSet remove(PhysReg pr) {
-    m_bits = m_bits & ~(1 << pr);
+    m_bits = m_bits & ~(1 << int(pr));
     return *this;
   }
 
   bool contains(PhysReg pr) const {
-    return bool(m_bits & (1 << pr));
+    return bool(m_bits & (1 << int(pr)));
   }
 
   // For iterating over present registers, e.g.:
@@ -105,7 +105,7 @@ class RegSet {
     uint64_t out;
     bool retval = ffs64(m_bits, out);
     reg = PhysReg(out);
-    ASSERT(!retval || (reg >= 0 && reg < 64));
+    ASSERT(!retval || (int(reg) >= 0 && int(reg) < 64));
     return retval;
   }
 
@@ -113,7 +113,7 @@ class RegSet {
     uint64_t out;
     bool retval = fls64(m_bits, out);
     reg = PhysReg(out);
-    ASSERT(!retval || (reg >= 0 && reg < 64));
+    ASSERT(!retval || (int(reg) >= 0 && int(reg) < 64));
     return retval;
   }
 };
@@ -127,7 +127,8 @@ struct RegContent {
   int64    m_int;
   Location m_loc;
 
-  RegContent(const Location &loc) : m_kind(Loc), m_int(0), m_loc(loc) { }
+  RegContent(const Location &loc, int64 intval = 0)
+      : m_kind(Loc), m_int(intval), m_loc(loc) { }
 
   RegContent(int64 _m_int) : m_kind(Int), m_int(_m_int), m_loc(Location()) { }
 
@@ -193,9 +194,8 @@ struct RegContent {
 
   // Hash function
   size_t operator()(const RegContent& cont) const {
-    return HPHP::hash_int64_pair(cont.m_kind,
-                                 HPHP::hash_int64_pair(cont.m_int,
-                                                       cont.m_loc(cont.m_loc)));
+    return HPHP::hash_int64_pair(
+      cont.m_kind, cont.isInt() ? cont.m_int : cont.m_loc(cont.m_loc));
   }
 
 };
@@ -262,9 +262,9 @@ class RegAlloc {
   RegInfo         m_info[kMaxRegs];
 
   // Secondary indices on m_info.
-  int             m_numRegs;          // Number of real registers, <= kMaxRegs
   RegSet          m_callerSaved;      // Good short-lived regs
   RegSet          m_calleeSaved;      // Good long-lived regs
+  int             m_numRegs;          // Number of real registers, <= kMaxRegs
   RegSet          m_allRegs;
   PhysReg         m_lru[kMaxRegs];    // lru order over registers
   typedef hphp_hash_map<RegContent, PhysReg, RegContent> ContToRegMap;
@@ -274,13 +274,15 @@ class RegAlloc {
   uint64          m_epoch;
 
   RegInfo* alloc(const Location& loc, DataType t, RegInfo::State state,
-                 bool needsFill);
+                 bool needsFill, int64 immVal = 0, PhysReg target = InvalidReg);
   RegInfo* findFreeReg(const Location& loc);
   void assignRegInfo(RegInfo *regInfo, const RegContent &cont,
                      RegInfo::State state, DataType type);
   void stateTransition(RegInfo* r, RegInfo::State to);
 
-  static bool isValidReg(PhysReg pr) { return pr >= 0 && pr < kMaxRegs; }
+  static bool isValidReg(PhysReg pr) {
+    return int(pr) >= 0 && int(pr) < kMaxRegs;
+  }
 
   // lru operations are O(numRegs), but numRegs is small.
   void lruFront(RegInfo *r);
@@ -304,7 +306,6 @@ class RegAlloc {
     return ri->m_pReg;
   }
 
-  // Handy for debugging.
   const RegInfo* getInfo(PhysReg pr) const {
     return physRegToInfo(pr);
   }
@@ -319,7 +320,8 @@ class RegAlloc {
   }
 
   // allocInputRegs: given an instruction, find/fill its inputs.
-  void allocInputReg(const NormalizedInstruction& ni, int index);
+  void allocInputReg(const NormalizedInstruction& ni, int index,
+                     PhysReg target = InvalidReg);
   void allocInputRegs(const NormalizedInstruction& ni);
   // allocOutputRegs: destructively mark output registers. Should only
   // be done when we know that the code we're emitting will drive valid

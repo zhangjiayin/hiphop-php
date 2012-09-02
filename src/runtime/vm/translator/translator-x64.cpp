@@ -24,10 +24,20 @@
 #include <string>
 #include <queue>
 #include <zlib.h>
+#include <unwind.h>
+
+#ifdef __FreeBSD__
+# include <ucontext.h>
+typedef __sighandler_t *sighandler_t;
+# define RIP_REGISTER(v) (v).mc_rip
+#else
+# define RIP_REGISTER(v) (v).gregs[REG_RIP]
+#endif
 
 #include <boost/bind.hpp>
 #include <boost/optional.hpp>
 #include <boost/utility/typed_in_place_factory.hpp>
+#include <boost/scoped_ptr.hpp>
 
 #include <util/pathtrack.h>
 #include <util/trace.h>
@@ -41,7 +51,6 @@
 #include <runtime/vm/bytecode.h>
 #include <runtime/vm/php_debug.h>
 #include <runtime/vm/runtime.h>
-#include <runtime/vm/exception_gate.h>
 #include <runtime/base/complex_types.h>
 #include <runtime/base/execution_context.h>
 #include <runtime/base/strings.h>
@@ -58,6 +67,7 @@
 #include <runtime/vm/translator/asm-x64.h>
 #include <runtime/vm/translator/srcdb.h>
 #include <runtime/vm/translator/x64-util.h>
+#include <runtime/vm/translator/unwind-x64.h>
 #include <runtime/vm/pendq.h>
 #include <runtime/vm/treadmill.h>
 #include <runtime/vm/stats.h>
@@ -72,11 +82,35 @@ using namespace HPHP::x64::reg;
 using namespace HPHP::Util;
 using namespace HPHP::Trace;
 using std::max;
-using namespace HPHP::VM::Debug;
 
 namespace HPHP {
 namespace VM {
 namespace Transl {
+
+#define TRANS_PERF_COUNTERS \
+  TPC(translate) \
+  TPC(retranslate) \
+  TPC(interp_bb) \
+  TPC(interp_instr) \
+  TPC(interp_one) \
+  TPC(max_trans) \
+  TPC(enter_tc) \
+  TPC(service_req)
+
+#define TPC(n) "trans_" #n,
+static const char* const kPerfCounterNames[] = {
+  TRANS_PERF_COUNTERS
+};
+#undef TPC
+
+#define TPC(n) tpc_ ## n,
+enum TransPerfCounter {
+  TRANS_PERF_COUNTERS
+  tpc_num_counters
+};
+#undef TPC
+static __thread int64 s_perfCounters[tpc_num_counters];
+#define INC_TPC(n) ++s_perfCounters[tpc_ ## n];
 
 static const DataType BitwiseKindOfString = KindOfString;
 
@@ -101,8 +135,11 @@ static const bool debug = false;
 
 typedef const size_t COff; // Const offsets
 
-// tx64: shared across all threads and requests.
-TranslatorX64* tx64;
+// nextTx64: Global shared state. The tx64 that should be used for
+// new requests going forward.
+TranslatorX64* volatile nextTx64;
+// tx64: Thread-local state. The tx64 we're using for the current request.
+__thread TranslatorX64* tx64;
 
 // Register dirtiness: thread-private.
 __thread VMRegState tl_regState = REGSTATE_CLEAN;
@@ -134,6 +171,8 @@ struct SpaceRecorder {
 // we are currently in, rVmSp point to the top of the eval stack at the
 // beginning of the current tracelet, and rVmTl points to the target cache
 // for the current request.
+//
+// Note: unwind-x64.cpp relies on the values used for these registers.
 static const PhysReg rVmSp = rbx;
 static const PhysReg rVmFp = rbp;
 static const PhysReg rVmTl = r12;
@@ -495,7 +534,7 @@ private:
  *    DiamondReturn retFromStubs;
  *    {
  *      UnlikelyIfBlock<CC_Z> ifNotRax(a, astubs, &retFromStubs);
- *      EMIT_CALL0(a, TCA(launch_nuclear_missiles));
+ *      EMIT_CALL(a, TCA(launch_nuclear_missiles));
  *    }
  *    // The inputParam was non-zero, here is the likely branch:
  *    m_regMap.allocOutputRegs(i);
@@ -602,7 +641,7 @@ class IfElseBlock : boost::noncopyable {
 
 static bool
 typeCanBeStatic(DataType t) {
-  return t != KindOfObject && t != KindOfVariant;
+  return t != KindOfObject && t != KindOfRef;
 }
 
 // IfRefCounted --
@@ -612,7 +651,7 @@ typedef CondBlock <TVOFF(m_type),
                    CC_LE> IfRefCounted;
 
 typedef CondBlock <TVOFF(m_type),
-                   KindOfVariant,
+                   KindOfRef,
                    CC_NZ> IfVariant;
 
 // IfCountNotStatic --
@@ -641,131 +680,6 @@ struct IfCountNotStatic {
   }
 };
 
-bool
-TranslatorX64::Lease::amOwner() const {
-  return m_held && m_owner == pthread_self();
-}
-
-/*
- * Multi-threaded scenarios for lease interleaving are hard to tease out.
- * The "gremlin" is a pseudo-thread that sometimes steals our lease while
- * we're running in the TC.
- *
- * The gremlin's pthread id is the bitwise negation of our own. Yes,
- * hypothetical wacky pthread implementations can break this. It's
- * DEBUG-only, folks.
- */
-void
-TranslatorX64::Lease::gremlinLock() {
-  TRACE_SET_MOD(txlease);
-  if (amOwner()) {
-    TRACE(2, "Lease: gremlinLock dropping lease\n");
-    drop();
-  }
-  pthread_mutex_lock(&m_lock);
-  TRACE(2, "Lease: gremlin grabbed lock\n ");
-  m_held = true;
-  m_owner = ~pthread_self();
-}
-
-void
-TranslatorX64::Lease::gremlinUnlock() {
-  TRACE_SET_MOD(txlease);
-  if (m_held && m_owner == ~pthread_self()) {
-    TRACE(2, "Lease: gremlin dropping lock\n ");
-    pthread_mutex_unlock(&m_lock);
-    m_held = false;
-  }
-}
-
-// acquire: also returns true if we are already the writer.
-bool
-TranslatorX64::Lease::acquire(bool blocking /* = false */ ) {
-  TRACE_SET_MOD(txlease);
-  if (amOwner()) {
-    return true;
-  }
-  int64 expire = m_hintExpire;
-  int64 expireDiff = expire - Timer::GetCurrentTimeMicros();
-  if (!blocking && (m_held ||
-                    (expireDiff > 0 && m_owner != pthread_self()))) {
-    return false;
-  }
-  checkRank(RankWriteLease);
-  if (0 == (blocking ?
-            pthread_mutex_lock(&m_lock) :
-            pthread_mutex_trylock(&m_lock))) {
-    TRACE(4, "thr%lx: acquired lease, called by %p,%p\n",
-          pthread_self(), __builtin_return_address(0),
-          __builtin_return_address(1));
-    if (debug) {
-      pushRank(RankWriteLease);
-      if (expire != 0 && m_owner != pthread_self()) {
-        m_hintGrabbed++;
-        TRACE(3, "thr%lx acquired hinted lease: expired %lldus ago\n",
-              pthread_self(), -expireDiff);
-      } else if (expire != 0 && m_owner == pthread_self()) {
-        m_hintKept++;
-      }
-      mprotect(tx64->a.code.base, tx64->a.code.size,
-               PROT_READ | PROT_WRITE | PROT_EXEC);
-    }
-
-    m_owner = pthread_self();
-    m_hintExpire = 0;
-    m_held = true;
-    return true;
-  }
-  if (blocking) {
-    TRACE(3, "thr%lx: failed to acquired lease in blocking mode\n",
-          pthread_self());
-  }
-  return false;
-}
-
-void
-TranslatorX64::Lease::drop(int64 hintExpireDelay) {
-  TRACE_SET_MOD(txlease);
-  ASSERT(amOwner());
-  TRACE(4, "thr%lx: dropping lease, called by %p,%p\n",
-        pthread_self(), __builtin_return_address(0),
-        __builtin_return_address(1));
-  if (debug) {
-    popRank(RankWriteLease);
-    mprotect(tx64->a.code.base, tx64->a.code.size, PROT_READ | PROT_EXEC);
-  }
-  m_hintExpire = hintExpireDelay > 0 ?
-    Timer::GetCurrentTimeMicros() + hintExpireDelay : 0;
-  m_held = false;
-  pthread_mutex_unlock(&m_lock);
-}
-
-TranslatorX64::LeaseHolderBase::LeaseHolderBase(Lease& l, LeaseAcquire acquire,
-                                                bool blocking)
-  : m_lease(l), m_haveLock(false), m_acquired(false) {
-  ASSERT(IMPLIES(blocking, acquire == ACQUIRE));
-  if (!m_lease.amOwner() && acquire == ACQUIRE) {
-    m_acquired = m_lease.acquire(blocking);
-  }
-  m_haveLock = m_lease.amOwner();
-}
-
-TranslatorX64::LeaseHolderBase::~LeaseHolderBase() {
-  if (m_acquired && m_lease.amOwner()) {
-    m_lease.drop(Lease::kStandardHintExpireInterval);
-  }
-}
-
-bool
-TranslatorX64::LeaseHolderBase::acquire() {
-  ASSERT(!m_acquired);
-  ASSERT(m_haveLock == m_lease.amOwner());
-  if (m_haveLock) {
-    return true;
-  }
-  return m_haveLock = m_acquired = m_lease.acquire();
-}
-
 // Segfault handler: figure out if it's an intentional segfault
 // (timeout exception) and if so, act appropriately. Otherwise, pass
 // the signal on.
@@ -775,7 +689,7 @@ void TranslatorX64::SEGVHandler(int signum, siginfo_t *info, void *ctx) {
     ThreadInfo::s_threadInfo->m_reqInjectionData.surprisePage;
   if (info->si_addr == surprisePage) {
     ucontext_t *ucontext = (ucontext_t*)ctx;
-    TCA rip = (TCA)ucontext->uc_mcontext.gregs[REG_RIP];
+    TCA rip = (TCA)RIP_REGISTER(ucontext->uc_mcontext);
     SignalStubMap::const_accessor a;
     if (!self->m_segvStubs.find(a, rip)) {
       NOT_REACHED();
@@ -784,7 +698,7 @@ void TranslatorX64::SEGVHandler(int signum, siginfo_t *info, void *ctx) {
 
     // When this handler returns, "call" the astubs code for this
     // surprise check.
-    ucontext->uc_mcontext.gregs[REG_RIP] = (uintptr_t)astubsCall;
+    RIP_REGISTER(ucontext->uc_mcontext) = (uintptr_t)astubsCall;
 
     // We've processed this event; reset the page in case execution
     // continues normally.
@@ -824,7 +738,7 @@ emitDeref(X64Assembler &a, PhysReg src, PhysReg dest) {
 static void
 emitDerefIfVariant(X64Assembler &a, PhysReg reg) {
   if (RuntimeOption::EvalJitCmovVarDeref) {
-    a.cmp_imm32_disp_reg32(KindOfVariant, TVOFF(m_type), reg);
+    a.cmp_imm32_disp_reg32(KindOfRef, TVOFF(m_type), reg);
     a.cload_reg64_disp_reg64(CC_Z, reg, 0, reg);
   } else {
     IfVariant ifVar(a, reg);
@@ -880,7 +794,7 @@ void TranslatorX64::emitTvSetRegSafe(const NormalizedInstruction& i,
                                      PhysReg oldData) {
   ASSERT(!i.isNative());
   ASSERT(!i.isSimple());
-  ASSERT(fromType != KindOfVariant);
+  ASSERT(fromType != KindOfRef);
 
   emitDerefIfVariant(a, toPtr);
   a.  load_reg64_disp_reg32(toPtr, TVOFF(m_type), oldType);
@@ -1085,29 +999,10 @@ TranslatorX64::emitPushAR(const NormalizedInstruction& i, const Func* func,
   emitVStackStore(a, i,      rVmFp,           savedRbpOff, sz::qword);
 }
 
-/*
- * emitCallSaveRegs --
- * emitCall --
- *
- *   Helpers for callout prologue and epilogue: save dirty registers,
- *   and helpers for passing arguments.
- *
- *   Prefer EMIT_CALL* when possible.
- */
 static inline bool
 regIsInCallingSequence(PhysReg r) {
-  switch(r) {
-    case rax:
-    case rdi:
-    case rsi:
-    case rcx:
-    case rdx:
-    case r8:
-    case r9:
-      return true;
-    default:
-      return false;
-  }
+  return r == rax || r == rdi || r == rsi || r == rcx || r == rdx ||
+         r == r8  || r == r9;
 }
 
 /*
@@ -1121,6 +1016,7 @@ static const RegSet kCallerSaved =
   RegSet(rax) | RegSet(rcx) | RegSet(rdx) | RegSet(rsi) |
   RegSet(rdi) | RegSet(r8)  | RegSet(r9)  | RegSet(r11);
 
+// Keep this list in sync with behavior in unwind-x64.cpp.
 static const RegSet kCalleeSaved = RegSet(r13) | RegSet(r14) | RegSet(r15);
 
 static const RegSet kAllRegs = kCalleeSaved | kCallerSaved;
@@ -1169,7 +1065,7 @@ typedef PhysRegSaverParity<1> PhysRegSaver;
 void
 TranslatorX64::emitCallSaveRegs() {
   ASSERT(!m_regMap.frozen());
-  m_regMap.cleanRegs(kAllRegs);
+  m_regMap.cleanRegs(kCallerSaved);
 }
 
 class ArgManager {
@@ -1183,13 +1079,13 @@ public:
   }
 
   void addLoc(const Location &loc) {
-    TRACE(6, "ArgManager: push arg %zd loc:(%s, %d)\n",
+    TRACE(6, "ArgManager: push arg %zd loc:(%s, %lld)\n",
           m_args.size(), loc.spaceName(), loc.offset);
     m_args.push_back(ArgContent(ArgContent::ArgLoc, loc));
   }
 
   void addDeref(const Location &loc) {
-    TRACE(6, "ArgManager: push arg %zd deref:(%s, %d)\n",
+    TRACE(6, "ArgManager: push arg %zd deref:(%s, %lld)\n",
           m_args.size(), loc.spaceName(), loc.offset);
     m_args.push_back(ArgContent(ArgContent::ArgDeref, loc));
   }
@@ -1207,14 +1103,16 @@ public:
   }
 
   void addLocAddr(const Location &loc) {
-    TRACE(6, "ArgManager: push arg %zd addr:(%s, %d)\n",
+    TRACE(6, "ArgManager: push arg %zd addr:(%s, %lld)\n",
           m_args.size(), loc.spaceName(), loc.offset);
+    ASSERT(!loc.isLiteral());
     m_args.push_back(ArgContent(ArgContent::ArgLocAddr, loc));
   }
 
   void emitArguments() {
     size_t n = m_args.size();
     ASSERT((int)n <= kNumRegisterArgs);
+    cleanLocs();
     std::map<PhysReg, size_t> used;
     std::vector<PhysReg> actual(n, InvalidReg);
     computeUsed(used, actual);
@@ -1237,18 +1135,32 @@ private:
       m_kind(kind), m_reg(InvalidReg), m_loc(&loc), m_imm(0) { }
   };
 
-  TranslatorX64 &m_tx64;
-  X64Assembler &m_a;
+  TranslatorX64& m_tx64;
+  X64Assembler& m_a;
   std::vector<ArgContent> m_args;
 
   ArgManager(); // Don't build without reference to translator
 
+  void cleanLocs();
   void computeUsed(std::map<PhysReg, size_t> &used,
                    std::vector<PhysReg> &actual);
   void shuffleRegisters(std::map<PhysReg, size_t> &used,
                      std::vector<PhysReg> &actual);
   void emitValues(std::vector<PhysReg> &actual);
 };
+
+void ArgManager::cleanLocs() {
+  for (size_t i = 0; i < m_args.size(); ++i) {
+    // We only need to clean locations we are passing the address of.
+    // (ArgLoc passes the value in the register mapped for a given
+    // location, not the address of the location itself, so it doesn't
+    // need cleaning here.)
+    if (m_args[i].m_kind != ArgContent::ArgLocAddr) continue;
+    if (m_tx64.m_regMap.hasReg(*m_args[i].m_loc)) {
+      m_tx64.m_regMap.cleanLoc(*m_args[i].m_loc);
+    }
+  }
+}
 
 void ArgManager::computeUsed(std::map<PhysReg, size_t> &used,
                              std::vector<PhysReg> &actual) {
@@ -1299,6 +1211,58 @@ TranslatorX64::emitRB(X64Assembler& a,
   emitImmReg(a, strlen(msg), argNumToRegName[arg++]);
   emitImmReg(a, t, argNumToRegName[arg++]);
   a.    call((TCA)ringbufferMsg);
+}
+
+/*
+ * allocate the input registers for i, trying to
+ * match inputs to call arguments.
+ * if args[j] == ArgDontAllocate, the arg is skipped
+ * if args[j] == ArgAnyReg, it will be allocated as normal
+ * otherwise, args[j] should be a positional call argument,
+ * and allocInputsForCall will attempt to allocate it to
+ * argNumToRegName[args[j]].
+ */
+void
+TranslatorX64::allocInputsForCall(const NormalizedInstruction& i,
+                                  const int* args) {
+  RegSet blackList;
+  int arg;
+  /*
+   * If any of the inputs is already in an argument
+   * register, blacklist it. ArgManager already takes
+   * care of shuffling registers efficiently
+   */
+  for (arg = i.inputs.size(); arg--; ) {
+    if (args[arg] != ArgDontAllocate &&
+        m_regMap.hasReg(i.inputs[arg]->location)) {
+      blackList |= RegSet(getReg(i.inputs[arg]->location));
+    }
+  }
+  bool hasAnyReg = false;
+  for (arg = i.inputs.size(); arg--; ) {
+    if (args[arg] != ArgAnyReg) {
+      if (args[arg] != ArgDontAllocate &&
+        !m_regMap.hasReg(i.inputs[arg]->location)) {
+        PhysReg target = argNumToRegName[args[arg]];
+        if (!blackList.contains(target)) {
+          m_regMap.cleanRegs(RegSet(target));
+          m_regMap.smashRegs(RegSet(target));
+        } else {
+          target = InvalidReg;
+        }
+        m_regMap.allocInputReg(i, arg, target);
+      }
+    } else {
+      hasAnyReg = true;
+    }
+  }
+  if (hasAnyReg) {
+    for (arg = i.inputs.size(); arg--; ) {
+      if (args[arg] == ArgAnyReg) {
+        m_regMap.allocInputReg(i, arg);
+      }
+    }
+  }
 }
 
 void ArgManager::shuffleRegisters(std::map<PhysReg, size_t> &used,
@@ -1421,7 +1385,9 @@ TranslatorX64::recordCallImpl(X64Assembler& a,
                               const NormalizedInstruction& i,
                               const SrcKey* inputSk /* = 0 */) {
   SrcKey sk = inputSk ? *inputSk : i.source;
-  ASSERT((reentrant && !i.isSimple()) || (!reentrant && !i.isNative()));
+  ASSERT(i.checkedInputs ||
+         (reentrant && !i.isSimple()) ||
+         (!reentrant && !i.isNative()));
   Offset pcOff = sk.offset() - curFunc()->base();
   SKTRACE(2, sk, "record%sCall pcOff %d\n",
              reentrant ? "Reentrant" : "", int(pcOff));
@@ -1429,6 +1395,47 @@ TranslatorX64::recordCallImpl(X64Assembler& a,
   recordSyncPoint(a, pcOff, stackOff);
   SKTRACE(2, sk, "record%sCall stackOff %d\n",
              reentrant ? "Reentrant" : "", int(stackOff));
+
+  /*
+   * Right now we assume call sites that need to record sync points
+   * may also throw exceptions.  We record information about dirty
+   * callee-saved registers so we can spill their contents during
+   * unwinding.  See unwind-x64.cpp.
+   */
+  if (!m_pendingUnwindRegInfo.empty()) {
+    if (Trace::moduleLevel(Trace::tunwind) >= 2) {
+      sk.trace("recordCallImpl has dirty callee-saved regs\n");
+      TRACE_MOD(Trace::tunwind, 2,
+                   "CTCA: %p saving dirty callee regs:\n",
+                   a.code.frontier);
+      for (int i = 0; i < UnwindRegInfo::kMaxCalleeSaved; ++i) {
+        if (m_pendingUnwindRegInfo.m_regs[i].dirty) {
+          TRACE_MOD(Trace::tunwind, 2, "  %s\n",
+                    m_pendingUnwindRegInfo.m_regs[i].pretty().c_str());
+        }
+      }
+    }
+    m_unwindRegMap.insert(a.code.frontier, m_pendingUnwindRegInfo);
+    m_pendingUnwindRegInfo.clear();
+  }
+}
+
+void TranslatorX64::prepareCallSaveRegs() {
+  emitCallSaveRegs(); // Clean caller-saved regs.
+  m_pendingUnwindRegInfo.clear();
+
+  RegSet rset = kCalleeSaved;
+  PhysReg reg;
+  while (rset.findFirst(reg)) {
+    rset.remove(reg);
+    if (!m_regMap.regIsDirty(reg)) continue;
+    const RegInfo* ri = m_regMap.getInfo(reg);
+    ASSERT(ri->m_cont.m_kind == RegContent::Loc);
+
+    // If the register is dirty, we'll record this so that we can
+    // restore it during stack unwinding if an exception is thrown.
+    m_pendingUnwindRegInfo.add(reg, ri->m_type, ri->m_cont.m_loc);
+  }
 }
 
 // Some macros to make writing calls palatable. You have to "type" the
@@ -1436,7 +1443,7 @@ TranslatorX64::recordCallImpl(X64Assembler& a,
 #define EMIT_CALL_PROLOGUE(a) do { \
   SpaceRecorder sr("_HCallInclusive", a);  \
   ArgManager _am(*this, a);       \
-  emitCallSaveRegs();             \
+  prepareCallSaveRegs();
 
 #define EMIT_CALL_EPILOGUE(a, dest) \
   _am.emitArguments();           \
@@ -1446,51 +1453,16 @@ TranslatorX64::recordCallImpl(X64Assembler& a,
   } \
 } while(0)
 
-// The argument macros have to be statements.
-#define IMM(i) _am.addImm(i)
-
-#define V(loc) _am.addLoc(loc)
-
-#define DEREF(loc) _am.addDeref(loc)
-
-#define R(r) _am.addReg(r)
-
+#define IMM(i)       _am.addImm(i)
+#define V(loc)       _am.addLoc(loc)
+#define DEREF(loc)   _am.addDeref(loc)
+#define R(r)         _am.addReg(r)
 #define RPLUS(r,off) _am.addRegPlus(r, off)
+#define A(loc)       _am.addLocAddr(loc)
 
-#define A(loc) _am.addLocAddr(loc)
-
-#define EMIT_CALL0(a,dest) \
-  EMIT_CALL_PROLOGUE(a) \
-  EMIT_CALL_EPILOGUE(a, dest)
-
-#define EMIT_CALL1(a,dest,A) \
-  EMIT_CALL_PROLOGUE(a) \
-  A; \
-  EMIT_CALL_EPILOGUE(a, dest)
-
-#define EMIT_CALL2(a,dest,A1,A2) \
-  EMIT_CALL_PROLOGUE(a) \
-  A1; A2; \
-  EMIT_CALL_EPILOGUE(a, dest)
-
-#define EMIT_CALL3(a,dest,A1,A2,A3) \
-  EMIT_CALL_PROLOGUE(a) \
-  A1; A2; A3; \
-  EMIT_CALL_EPILOGUE(a, dest)
-
-#define EMIT_CALL4(a,dest,A1,A2,A3,A4) \
-  EMIT_CALL_PROLOGUE(a) \
-  A1; A2; A3; A4; \
-  EMIT_CALL_EPILOGUE(a, dest)
-
-#define EMIT_CALL5(a,dest,A1,A2,A3,A4,A5) \
-  EMIT_CALL_PROLOGUE(a) \
-  A1; A2; A3; A4; A5; \
-  EMIT_CALL_EPILOGUE(a, dest)
-
-#define EMIT_CALL6(a,dest,A1,A2,A3,A4,A5,A6) \
-  EMIT_CALL_PROLOGUE(a) \
-  A1; A2; A3; A4; A5; A6; \
+#define EMIT_CALL(a, dest, ...) \
+  EMIT_CALL_PROLOGUE(a)         \
+  __VA_ARGS__ ;                 \
   EMIT_CALL_EPILOGUE(a, dest)
 
 void
@@ -1726,7 +1698,7 @@ TCA TranslatorX64::retranslate(SrcKey sk, bool align) {
     SKTRACE(1, sk, "retranslate abort due to debugger\n");
     return NULL;
   }
-  LeaseHolder writer(m_writeLease);
+  LeaseHolder writer(s_writeLease);
   if (!writer) return NULL;
   SKTRACE(1, sk, "retranslate\n");
   return translate(&sk, align);
@@ -1799,8 +1771,10 @@ TranslatorX64::getTranslation(const SrcKey *sk, bool align) {
     }
     if (const SrcRec* sr = m_srcDB.find(*sk)) {
       TCA tca = sr->getTopTranslation();
-      SKTRACE(2, *sk, "getTranslation: found %p\n", tca);
-      return tca;
+      if (tca) {
+        SKTRACE(2, *sk, "getTranslation: found %p\n", tca);
+        return tca;
+      }
     }
   }
 
@@ -1810,19 +1784,27 @@ TranslatorX64::getTranslation(const SrcKey *sk, bool align) {
    * lottery at the dawn of time. Hopefully lots of requests won't require
    * any new translation.
    */
-  LeaseHolder writer(m_writeLease);
+  LeaseHolder writer(s_writeLease);
   if (!writer) return NULL;
   if (SrcRec* sr = m_srcDB.find(*sk)) {
-    // Handle extremely unlikely race; someone may have just already
-    // added the first instance of this SrcRec while we did a
-    // non-blocking wait on the write lease.
-    return sr->getTopTranslation();
+    TCA tca = sr->getTopTranslation();
+    if (tca) {
+      // Handle extremely unlikely race; someone may have just already
+      // added the first instance of this SrcRec while we did a
+      // non-blocking wait on the write lease.
+      return tca;
+    } else {
+      // Since we are holding the write lease, we know that sk is properly
+      // initialized, except that it has no translations (due to
+      // replaceOldTranslations)
+      return retranslate(*sk, align);
+    }
   }
 
   // We put retranslate requests at the end of our slab to more frequently
   //   allow conditional jump fall-throughs
 
-  TCA start = emitServiceReq(REQ_RETRANSLATE, 1, uint64_t(sk->offset()));
+  TCA start = emitServiceReq(false, REQ_RETRANSLATE, 1, uint64_t(sk->offset()));
   SKTRACE(1, *sk, "inserting anchor translation for (%p,%d) at %p\n",
           curUnit(), sk->offset(), start);
   SrcRec* sr = m_srcDB.insert(*sk);
@@ -1839,6 +1821,7 @@ TranslatorX64::getTranslation(const SrcKey *sk, bool align) {
 
 TCA
 TranslatorX64::translate(const SrcKey *sk, bool align) {
+  INC_TPC(translate);
   ASSERT(vmfp() >= vmsp());
   ASSERT(((uintptr_t)vmsp() & (sizeof(Cell) - 1)) == 0);
   ASSERT(((uintptr_t)vmfp() & (sizeof(Cell) - 1)) == 0);
@@ -1919,6 +1902,16 @@ TranslatorX64::smash(X64Assembler &a, TCA src, TCA dest) {
   }
 }
 
+void TranslatorX64::protectCode() {
+  mprotect(tx64->a.code.base, tx64->a.code.size, PROT_READ | PROT_EXEC);
+
+}
+
+void TranslatorX64::unprotectCode() {
+  mprotect(tx64->a.code.base, tx64->a.code.size,
+           PROT_READ | PROT_WRITE | PROT_EXEC);
+}
+
 void
 TranslatorX64::emitStackCheck(int funcDepth, Offset pc) {
   uint64_t stackMask = cellsToBytes(RuntimeOption::EvalVMStackElms) - 1;
@@ -1930,50 +1923,37 @@ TranslatorX64::emitStackCheck(int funcDepth, Offset pc) {
   // Success.
 }
 
-// Loads ThreadInfo::s_threadInfo->m_reqInjectionData.conditionFlags
-// into rScratch
+// Tests the surprise flags for the current thread. Should be used
+// before a jnz to surprise handling code.
 void
-TranslatorX64::emitLoadSurpriseFlags() {
-  emitTLSLoad<ThreadInfo>(a, ThreadInfo::s_threadInfo, rScratch);
-  static COff flagOff = offsetof(ThreadInfo, m_reqInjectionData) +
-    offsetof(RequestInjectionData, conditionFlags);
-  a.load_reg64_disp_reg64(rScratch, flagOff, rScratch);
+TranslatorX64::emitTestSurpriseFlags() {
+  CT_ASSERT(sizeof(((RequestInjectionData*)0)->conditionFlags) == 8);
+  a.test_imm64_disp_reg64(-1, TargetCache::kConditionFlagsOff, rVmTl);
 }
 
 void
-TranslatorX64::trimExtraArgs(ActRec* ar) {
-  EXCEPTION_GATE_ENTER();
-  ASSERT(!ar->hasInvName());
-  
-  const Func* f = ar->m_func;
-  int numParams = f->numParams();
-  int numArgs = ar->numArgs();
-  ASSERT(numArgs > numParams);
-  int numExtra = numArgs - numParams;
-    
-  TRACE(1, "trimExtraArgs: %d args, function %s takes only %d, ar %p\n",
-        numArgs, f->name()->data(), numParams, ar);
-
-  if (f->attrs() & AttrMayUseVV) {
-    if (!ar->hasExtraArgs()) {
-      VMRegAnchor _(ar);
-      ar->setExtraArgs(new ExtraArgs());
+TranslatorX64::emitCheckSurpriseFlagsEnter(bool inTracelet, Offset pcOff,
+                                           Offset stackOff) {
+  emitTestSurpriseFlags();
+  {
+    UnlikelyIfBlock<CC_NZ> ifTracer(a, astubs);
+    if (false) { // typecheck
+      const ActRec* ar = NULL;
+      EventHook::FunctionEnter(ar, 0);
     }
-    // Stash the excess args in the VarEnv attached to the ActRec. They'll be
-    // decref'ed, if needed, when the VarEnv gets destructed.
-    ar->getExtraArgs()->copyExtraArgs(
-      (TypedValue*)(uintptr_t(ar) - numArgs * sizeof(TypedValue)),
-      numArgs - numParams);
-  } else {
-    // Function is not marked as "MayUseVV", so discard the extra arguments
-    TypedValue* tv = (TypedValue*)(uintptr_t(ar) - numArgs*sizeof(TypedValue));
-    for (int i = 0; i < numExtra; ++i) {
-      tvRefcountedDecRef(tv);
-      ++tv;
+    astubs.mov_reg64_reg64(rVmFp, argNumToRegName[0]);
+    CT_ASSERT(EventHook::NormalFunc == 0);
+    astubs.xor_reg32_reg32(argNumToRegName[1], argNumToRegName[1]);
+    emitCall(astubs, (TCA)&EventHook::FunctionEnter);
+    if (inTracelet) {
+      recordSyncPoint(astubs, pcOff, stackOff);
+    } else {
+      // If we're being called while generating a func prologue, we
+      // have to record the fixup directly in the fixup map instead of
+      // going through m_pendingFixups like normal.
+      m_fixupMap.recordFixup(astubs.code.frontier, Fixup(pcOff, stackOff));
     }
-    ar->setNumArgs(numParams);
   }
-  EXCEPTION_GATE_LEAVE();
 }
 
 void
@@ -2021,105 +2001,147 @@ TranslatorX64::shuffleArgsForMagicCall(ActRec* ar) {
   return 1;
 }
 
-static uint64 run_intercept_helper(ActRec* ar, Variant* ihandler) {
-  EXCEPTION_GATE_ENTER();
-  /*
-   * The standard VMRegAnchor treatment won't work here.
-   *
-   * The fp sync machinery is fundamentally based on the notion that
-   * instruction pointers in the TC are uniquely associated with source
-   * HHBC instructions, and that source HHBC instructions are in turn
-   * uniquely associated with SP->FP deltas.
-   *
-   * run_intercept_helper is called from the prologue of the callee. The
-   * prologue is 1) still in the caller frame for now, and 2) shared across
-   * multiple call sites. 1 means that we have the fp from the caller's
-   * frame, and 2 means that this fp is not enough to figure out sp.
-   *
-   * However, the prologue passes us the callee actRec, whose predecessor
-   * has to be the caller. So we can sync sp and fp by ourselves here.
-   * Geronimo!
-   *
-   */
+/*
+ * The standard VMRegAnchor treatment won't work for some cases called
+ * during function preludes.
+ *
+ * The fp sync machinery is fundamentally based on the notion that
+ * instruction pointers in the TC are uniquely associated with source
+ * HHBC instructions, and that source HHBC instructions are in turn
+ * uniquely associated with SP->FP deltas.
+ *
+ * run_intercept_helper/trimExtraArgs is called from the prologue of
+ * the callee. The prologue is 1) still in the caller frame for now,
+ * and 2) shared across multiple call sites. 1 means that we have the
+ * fp from the caller's frame, and 2 means that this fp is not enough
+ * to figure out sp.
+ *
+ * However, the prologue passes us the callee actRec, whose predecessor
+ * has to be the caller. So we can sync sp and fp by ourselves here.
+ * Geronimo!
+ */
+static void sync_regstate_to_caller(ActRec* preLive) {
   ASSERT(tl_regState == REGSTATE_DIRTY);
-  vmfp() = (TypedValue*)ar->m_savedRbp;
-  vmsp() = (TypedValue*)ar - ar->numArgs();
-  if (ActRec *fp = g_vmContext->m_fp) {
+  vmfp() = (TypedValue*)preLive->m_savedRbp;
+  vmsp() = (TypedValue*)preLive - preLive->numArgs();
+  if (ActRec* fp = g_vmContext->m_fp) {
     if (fp->m_func && fp->m_func->unit()) {
-      vmpc() = fp->m_func->unit()->at(fp->m_func->base() + ar->m_soff);
+      vmpc() = fp->m_func->unit()->at(fp->m_func->base() + preLive->m_soff);
     }
   }
   tl_regState = REGSTATE_CLEAN;
+}
+
+static uint64 run_intercept_helper(ActRec* ar, Variant* ihandler) {
+  sync_regstate_to_caller(ar);
   bool ret = run_intercept_handler<true>(ar, ihandler);
   /*
-   * Restore tl_regState manually in the no-exception case only.
-   * When there is an exception, we must not restore the state,
-   * because hhvmPrepareThrow doesnt know how to restore it (and
-   * doesnt need to).
+   * Restore tl_regState manually in the no-exception case only.  (The
+   * VM regs are clean here---we only need to set them dirty if we are
+   * stopping to execute in the TC again, which we won't be doing if
+   * an exception is propagating.)
    */
   tl_regState = REGSTATE_DIRTY;
-  EXCEPTION_GATE_RETURN(ret);
+  return ret;
+}
+
+void
+TranslatorX64::trimExtraArgs(ActRec* ar) {
+  ASSERT(!ar->hasInvName());
+
+  sync_regstate_to_caller(ar);
+  const Func* f = ar->m_func;
+  int numParams = f->numParams();
+  int numArgs = ar->numArgs();
+  ASSERT(numArgs > numParams);
+  int numExtra = numArgs - numParams;
+
+  TRACE(1, "trimExtraArgs: %d args, function %s takes only %d, ar %p\n",
+        numArgs, f->name()->data(), numParams, ar);
+
+  if (f->attrs() & AttrMayUseVV) {
+    if (!ar->hasExtraArgs()) {
+      ar->setExtraArgs(new ExtraArgs());
+    }
+    // Stash the excess args in the VarEnv attached to the ActRec. They'll be
+    // decref'ed, if needed, when the VarEnv gets destructed.
+    ar->getExtraArgs()->copyExtraArgs(
+      (TypedValue*)(uintptr_t(ar) - numArgs * sizeof(TypedValue)),
+      numArgs - numParams);
+  } else {
+    // Function is not marked as "MayUseVV", so discard the extra arguments
+    TypedValue* tv = (TypedValue*)(uintptr_t(ar) - numArgs*sizeof(TypedValue));
+    for (int i = 0; i < numExtra; ++i) {
+      tvRefcountedDecRef(tv);
+      ++tv;
+    }
+    ar->setNumArgs(numParams);
+  }
+
+  // Only go back to dirty in a non-exception case.  (Same reason as
+  // above.)
+  tl_regState = REGSTATE_DIRTY;
 }
 
 TCA
 TranslatorX64::getInterceptHelper() {
-    if (false) {  // typecheck
-      Variant *h = get_intercept_handler(CStrRef((StringData*)NULL),
-                                         (char*)NULL);
-      bool c UNUSED = run_intercept_helper((ActRec*)NULL, h);
+  if (false) {  // typecheck
+    Variant *h = get_intercept_handler(CStrRef((StringData*)NULL),
+                                       (char*)NULL);
+    bool c UNUSED = run_intercept_helper((ActRec*)NULL, h);
+  }
+  if (!m_interceptHelper) {
+    m_interceptHelper = TCA(astubs.code.frontier);
+    astubs.    load_reg64_disp_reg64(rStashedAR, offsetof(ActRec, m_func),
+                                     rax);
+    astubs.    lea_reg64_disp_reg64(rax, Func::fullNameOff(),
+                                    argNumToRegName[0]);
+
+    astubs.    lea_reg64_disp_reg64(rax, Func::maybeInterceptedOff(),
+                                    argNumToRegName[1]);
+
+    astubs.    call(TCA(get_intercept_handler));
+    astubs.    test_reg64_reg64(rax, rax);
+    {
+      JccBlock<CC_NZ> ifNotIntercepted(astubs);
+      astubs.  ret();
     }
-    if (!m_interceptHelper) {
-      m_interceptHelper = TCA(astubs.code.frontier);
-      astubs.    load_reg64_disp_reg64(rStashedAR, offsetof(ActRec, m_func),
-                                       rax);
-      astubs.    lea_reg64_disp_reg64(rax, Func::fullNameOff(),
-                                      argNumToRegName[0]);
 
-      astubs.    lea_reg64_disp_reg64(rax, Func::maybeInterceptedOff(),
-                                      argNumToRegName[1]);
+    // we might re-enter, so align the stack
+    astubs.    sub_imm32_reg64(8, rsp);
+    // Copy the old rbp into the savedRbp pointer.
+    astubs.    store_reg64_disp_reg64(rbp, 0, rStashedAR);
 
-      astubs.    call(TCA(get_intercept_handler));
-      astubs.    test_reg64_reg64(rax, rax);
-      {
-        JccBlock<CC_NZ> ifNotIntercepted(astubs);
-        astubs.  ret();
-      }
+    PhysReg rSavedRip = r13;
+    // Fish out the saved rip. We may need to jump there, and the helper will
+    // have wiped out the ActRec.
+    astubs.    load_reg64_disp_reg64(rStashedAR, AROFF(m_savedRip),
+                                     rSavedRip);
+    astubs.    mov_reg64_reg64(rStashedAR, argNumToRegName[0]);
+    astubs.    mov_reg64_reg64(rax, argNumToRegName[1]);
+    astubs.    call(TCA(run_intercept_helper));
 
-      // we might re-enter, so align the stack
-      astubs.    sub_imm32_reg64(8, rsp);
-      // Copy the old rbp into the savedRbp pointer.
-      astubs.    store_reg64_disp_reg64(rbp, 0, rStashedAR);
-
-      PhysReg rSavedRip = r13;
-      // Fish out the saved rip. We may need to jump there, and the helper will
-      // have wiped out the ActRec.
-      astubs.    load_reg64_disp_reg64(rStashedAR, AROFF(m_savedRip),
-                                       rSavedRip);
-      astubs.    mov_reg64_reg64(rStashedAR, argNumToRegName[0]);
-      astubs.    mov_reg64_reg64(rax, argNumToRegName[1]);
-      astubs.    call(TCA(run_intercept_helper));
-
-      // Normally we'd like to recordReentrantCall here, but the vmreg sync'ing
-      // for run_intercept_handler is a special little snowflake. See
-      // run_intercept_handler for details.
-      astubs.    test_reg64_reg64(rax, rax);
-      {
-        // If the helper returned false, don't execute this function. The helper
-        // will have cleaned up the interceptee's arguments and AR, and pushed
-        // the handler's return value; we now need to get out.
-        //
-        // We don't need to touch rVmFp; it's still pointing to the caller of
-        // the interceptee. We need to adjust rVmSp. Then we need to jump to the
-        // saved rip from the interceptee's ActRec.
-        JccBlock<CC_NZ> ifDontEnterFunction(astubs);
-        astubs.  add_imm32_reg64(16, rsp);
-        astubs.  lea_reg64_disp_reg64(rStashedAR, AROFF(m_r), rVmSp);
-        astubs.  jmp_reg(rSavedRip);
-      }
-      astubs.    add_imm32_reg64(8, rsp);
-      astubs.    ret();
+    // Normally we'd like to recordReentrantCall here, but the vmreg sync'ing
+    // for run_intercept_handler is a special little snowflake. See
+    // run_intercept_handler for details.
+    astubs.    test_reg64_reg64(rax, rax);
+    {
+      // If the helper returned false, don't execute this function. The helper
+      // will have cleaned up the interceptee's arguments and AR, and pushed
+      // the handler's return value; we now need to get out.
+      //
+      // We don't need to touch rVmFp; it's still pointing to the caller of
+      // the interceptee. We need to adjust rVmSp. Then we need to jump to the
+      // saved rip from the interceptee's ActRec.
+      JccBlock<CC_NZ> ifDontEnterFunction(astubs);
+      astubs.  add_imm32_reg64(16, rsp);
+      astubs.  lea_reg64_disp_reg64(rStashedAR, AROFF(m_r), rVmSp);
+      astubs.  jmp_reg(rSavedRip);
     }
-    return m_interceptHelper;
+    astubs.    add_imm32_reg64(8, rsp);
+    astubs.    ret();
+  }
+  return m_interceptHelper;
 }
 
 TCA
@@ -2197,9 +2219,11 @@ static const int kFuncGuardLen = 23;
 template<typename T>
 static T*
 funcGuardToFuncImm(TCA funcGuard) {
-  T* retval = (T*)(funcGuard + kFuncMovImm);
-  // We padded these so that the immediate is on a qword boundary.
-  ASSERT((uintptr_t(retval) & 0x7) == 0);
+  T* retval = (T*)(funcGuard + kFuncMovImm + (2 - sizeof(T)/4));
+  // We padded these so the immediate would fit inside an aligned 8 byte region
+  // so the xor of the address of the first byte, with the address of the last
+  // byte should only be non zero in the bottom 3 bits.
+  ASSERT(((uintptr_t(retval) ^ (uintptr_t(retval + 1) - 1)) & ~7) == 0);
   return retval;
 }
 
@@ -2285,10 +2309,23 @@ skipFuncCheck(TCA dest) {
  * Also, we are called from two distinct environments. From REQ_BIND_CALL,
  * we're running "between" basic blocks, with all VM registers sync'ed.
  * However, we're also called in the middle of basic blocks, when dropping
- * entries into the FuncCache. So don't go around using the
+ * entries into func->m_prologues. So don't go around using the
  * translation-time values of vmfp()/vmsp(), since they have an
  * unpredictable relationship to the source.
  */
+bool
+TranslatorX64::checkCachedPrologue(const Func* func, int paramIdx,
+                                   TCA& prologue) const {
+  prologue = (TCA)func->getPrologue(paramIdx);
+  if (prologue != (TCA)fcallHelperThunk && !s_replaceInFlight) {
+    TRACE(1, "cached prologue %s(%d) -> cached %p\n",
+          func->fullName()->data(), paramIdx, prologue);
+    ASSERT(isValidCodeAddress(prologue));
+    return true;
+  }
+  return false;
+}
+
 TCA
 TranslatorX64::funcPrologue(Func* func, int nPassed) {
   func->validate();
@@ -2299,17 +2336,17 @@ TranslatorX64::funcPrologue(Func* func, int nPassed) {
   bool funcIsMagic = func->isMagic();
 
   // Do a quick test before grabbing the write lease
-  TCA prologue = (TCA)func->getPrologue(paramIndex);
-  ASSERT(prologue);
-  if (prologue != (TCA)fcallHelperThunk) return prologue;
+  TCA prologue;
+  if (checkCachedPrologue(func, paramIndex, prologue)) return prologue;
 
-  LeaseHolder writer(m_writeLease);
-  if (!writer) return NULL;
+  // If the translator is getting replaced out from under us, refuse to
+  // provide a prologue; we don't know whether this request is running on the
+  // old or new context.
+  LeaseHolder writer(s_writeLease);
+  if (!writer || s_replaceInFlight) return NULL;
   // Double check the prologue array now that we have the write lease
   // in case another thread snuck in and set the prologue already.
-  prologue = (TCA)func->getPrologue(paramIndex);
-  ASSERT(prologue);
-  if (prologue != (TCA)fcallHelperThunk) return prologue;
+  if (checkCachedPrologue(func, paramIndex, prologue)) return prologue;
 
   SpaceRecorder sr("_FuncPrologue", a);
   // Careful: this isn't necessarily the real entry point. For funcIsMagic
@@ -2337,6 +2374,7 @@ TranslatorX64::funcPrologue(Func* func, int nPassed) {
   if (RuntimeOption::EvalJitTransCounters) {
     emitTransCounterInc(a);
   }
+
   if (!funcIsMagic) {
     // entry point for magic methods comes later
     emitRB(a, RBTypeFuncEntry, func->fullName()->data());
@@ -2376,24 +2414,27 @@ TranslatorX64::funcPrologue(Func* func, int nPassed) {
     start = magicStart;
   }
   ASSERT(funcGuardIsForFunc(start, func));
+  TRACE(2, "funcPrologue tx64 %p %s(%d) setting prologue %p\n",
+        this, func->fullName()->data(), nPassed, start);
+  ASSERT(isValidCodeAddress(start));
   func->setPrologue(paramIndex, start);
 
   addTranslation(TransRec(skFuncBody, func->unit()->md5(),
                           TransProlog, aStart, a.code.frontier - aStart,
                           stubStart, astubs.code.frontier - stubStart));
 
-  recordGdbTranslation(skFuncBody, func->unit(), aStart,
-                       a.code.frontier - aStart, false, true);
-  Debug::recordBCInstr(OpFuncPrologue, start, a.code.frontier);
+  recordGdbTranslation(skFuncBody, func->unit(),
+                       a, aStart,
+                       false, true);
+  recordBCInstr(OpFuncPrologue, a, start);
 
   return start;
 }
 
 static TCA callAndResume(ActRec *ar) {
   VMRegAnchor _(ar,true);
-  EXCEPTION_GATE_ENTER();
   g_vmContext->doFCall<true>(ar, g_vmContext->m_pc);
-  EXCEPTION_GATE_RETURN(Translator::Get()->getResumeHelper());
+  return Translator::Get()->getResumeHelper();
 }
 
 extern "C"
@@ -2443,8 +2484,8 @@ TranslatorX64::interceptPrologues(Func* func) {
     return;
   }
   func->maybeIntercepted() = -1;
-  ASSERT(m_writeLease.amOwner());
-  int maxNumPrologues = Func::getMaxNumPrologues(func->numParams());
+  ASSERT(s_writeLease.amOwner());
+  int maxNumPrologues = func->numPrologues();
   for (int i = 0; i < maxNumPrologues; i++) {
     TCA prologue = func->getPrologue(i);
     if (prologue == (unsigned char*)fcallHelperThunk)
@@ -2467,7 +2508,7 @@ TranslatorX64::interceptPrologues(Func* func) {
     ASSERT(funcGuardIsForFunc(addr, func));
     ASSERT(addr);
     func->setPrologue(i, addr);
-    TRACE(1, "%s.prologue[%d]=%p\n",
+    TRACE(1, "interceptPrologues %s prologue[%d]=%p\n",
           func->fullName()->data(), i, (void*)addr);
   }
 }
@@ -2577,10 +2618,15 @@ TranslatorX64::emitPrologue(Func* func, int nPassed) {
     // dispatch to funclet.
     destPC = func->unit()->entry() + dvInitializer;
   }
-
   SrcKey funcBody(func, destPC);
-  emitBindJmp(funcBody);
 
+  // Check surprise flags in the same place as the interpreter: after
+  // setting up the callee's frame but before executing any of its
+  // code
+  emitCheckSurpriseFlagsEnter(false, funcBody.m_offset - func->base(),
+                              frameCells);
+
+  emitBindJmp(funcBody);
   return funcBody;
 }
 
@@ -2601,6 +2647,7 @@ TranslatorX64::emitBindCall(const Tracelet& t,
     ASSERT(ni.funcd->numLocals() == ni.funcd->numParams());
     ASSERT(ni.funcd->numIterators() == 0);
     a.  lea_reg64_disp_reg64(rVmSp, cellsToBytes(numArgs), rVmFp);
+    emitCheckSurpriseFlagsEnter(true, 0, numArgs);
     // rVmSp is already correctly adjusted, because there's no locals
     // other than the arguments passed.
     return emitNativeImpl(ni.funcd, false /* don't jump to return */);
@@ -2616,7 +2663,7 @@ TranslatorX64::emitBindCall(const Tracelet& t,
   a.    mov_reg64_reg64(rStashedAR, serviceReqArgRegs[1]);
   prepareForSmash(kJmpLen);
   TCA start = a.code.frontier;
-  a.    jmp(emitServiceReq(REQ_BIND_CALL, 1ull, req));
+  a.    jmp(emitServiceReq(false, REQ_BIND_CALL, 1ull, req));
 
   TRACE(1, "will bind static call: tca %p, this %p, funcd %p\n",
         start, this, ni.funcd);
@@ -2757,11 +2804,14 @@ TCA
 TranslatorX64::bindJmp(TCA toSmash, SrcKey destSk, bool isAddr) {
   TCA tDest = getTranslation(&destSk, false);
   if (!tDest) return NULL;
-  LeaseHolder writer(m_writeLease);
+  LeaseHolder writer(s_writeLease);
   if (!writer) return tDest;
   SrcRec* sr = getSrcRec(destSk);
-  sr->chainFrom(getAsmFor(toSmash), isAddr ?
-                IncomingBranch((TCA*)toSmash) : IncomingBranch(toSmash));
+  if (isAddr) {
+    sr->chainFrom(a, IncomingBranch((TCA*)toSmash));
+  } else {
+    sr->chainFrom(getAsmFor(toSmash), IncomingBranch(toSmash));
+  }
   return tDest;
 }
 
@@ -2794,7 +2844,7 @@ TranslatorX64::bindJmpccFirst(TCA toSmash,
                               bool taken,
                               ConditionCode cc) {
   const Func* f = curFunc();
-  LeaseHolder writer(m_writeLease);
+  LeaseHolder writer(s_writeLease);
   if (!writer) return NULL;
   Offset offWillExplore = taken ? offTaken : offNotTaken;
   Offset offWillDefer = taken ? offNotTaken : offTaken;
@@ -2807,7 +2857,7 @@ TranslatorX64::bindJmpccFirst(TCA toSmash,
   // yet.
   if (taken) cc = ccNegate(cc);
   TCA stub =
-    emitServiceReq(TranslatorX64::REQ_BIND_JMPCC_SECOND, 3,
+    emitServiceReq(false, TranslatorX64::REQ_BIND_JMPCC_SECOND, 3,
                    toSmash, uint64_t(offWillDefer), uint64_t(cc));
 
   Asm &as = getAsmFor(toSmash);
@@ -2824,7 +2874,7 @@ TranslatorX64::bindJmpccFirst(TCA toSmash,
   if (!tDest) {
     return 0;
   }
-  ASSERT(m_writeLease.amOwner());
+  ASSERT(s_writeLease.amOwner());
   /*
    * Roll over the jcc and the jmp/fallthru. E.g., from:
    *
@@ -2845,14 +2895,14 @@ TranslatorX64::bindJmpccFirst(TCA toSmash,
   return tDest;
 }
 
-// smashes a jz/jnz to point to a new destination
+// smashes a jcc to point to a new destination
 TCA
 TranslatorX64::bindJmpccSecond(TCA toSmash, const Offset off,
                                ConditionCode cc) {
   const Func* f = curFunc();
   SrcKey dest(f, off);
   TCA branch = getTranslation(&dest, true);
-  LeaseHolder writer(m_writeLease, NO_ACQUIRE);
+  LeaseHolder writer(s_writeLease, NO_ACQUIRE);
   if (branch && writer.acquire()) {
     SrcRec* destRec = getSrcRec(dest);
     destRec->chainFrom(getAsmFor(toSmash), IncomingBranch(cc, toSmash));
@@ -2875,7 +2925,7 @@ TranslatorX64::emitBindJmp(X64Assembler& _a, const SrcKey& dest,
     _a.   jmp(toSmash);
   }
 
-  TCA sr = emitServiceReq(req, 2,
+  TCA sr = emitServiceReq(false, req, 2,
                           toSmash, uint64_t(dest.offset()));
 
   if (&_a == &astubs) {
@@ -2905,6 +2955,23 @@ TranslatorX64::emitStringCheck(X64Assembler& _a,
 }
 
 void
+TranslatorX64::emitTypeCheck(X64Assembler& _a, DataType dt,
+                             PhysReg base, int offset,
+                             PhysReg tmp/*= InvalidReg*/) {
+  offset += TVOFF(m_type);
+  if (IS_STRING_TYPE(dt)) {
+    LazyScratchReg scr(m_regMap);
+    if (tmp == InvalidReg) {
+      scr.alloc();
+      tmp = *scr;
+    }
+    emitStringCheck(_a, base, offset, tmp);
+  } else {
+    _a. cmp_imm32_disp_reg32(dt, offset, base);
+  }
+}
+
+void
 TranslatorX64::checkType(X64Assembler& a,
                          const Location& l,
                          const RuntimeType& rtt,
@@ -2927,13 +2994,12 @@ TranslatorX64::checkType(X64Assembler& a,
   if (Trace::moduleEnabled(Trace::stats, 2)) {
     Stats::emitInc(a, Stats::TraceletGuard_branch);
   }
-  if (rtt.isValue() && IS_STRING_TYPE(rtt.typeCheckValue())) {
-    emitStringCheck(a, base, disp + rtt.typeCheckOffset(), rax);
-  } else {
-    ASSERT(rtt.typeCheckValue() != KindOfInvalid);
+  if (rtt.isIter()) {
     a.   cmp_imm32_disp_reg32(rtt.typeCheckValue(),
                               disp + rtt.typeCheckOffset(),
                               base);
+  } else {
+    emitTypeCheck(a, rtt.typeCheckValue(), base, disp, rax);
   }
   emitFallbackJmp(fail);
 }
@@ -3096,61 +3162,60 @@ asm (
  *   rsi:  Cell* vm_fp
  *   rdx:  unsigned char* start
  *   rcx:  TReqInfo* infoPtr
- *   r8:   ActRec* firstARAddr
+ *   r8:   ActRec* firstAR
  *   r9:   uint8_t* targetCacheBase
+ *
+ * Note: enterTCHelper does not save callee-saved registers except
+ * %rbp.  This means when we call it from C++, we have to tell gcc to
+ * clobber all the other callee-saved registers.
  */
 asm (
   ".byte 0\n"
   ".align 16\n"
-  "__enterTCHelper:\n"
+"__enterTCHelper:\n"
   // Prologue
-  // Define CFI rules for determining frame pointer and unwinding RBP
   ".cfi_startproc\n"
   "push %rbp\n"
-  ".cfi_def_cfa_offset 16\n"
-  ".cfi_offset rbp, -16\n"
-  "mov %rsp, %rbp\n"
-  ".cfi_def_cfa_register rbp\n"
-  // Save all callee-saved registers
-  "push %rbx\n"
-  "push %r12\n"
-  "push %r13\n"
-  "push %r14\n"
-  "push %r15\n"
+  ".cfi_adjust_cfa_offset 8\n"  // offset to previous frame relative to %rsp
+  ".cfi_offset rbp, -16\n"      // Where to find previous value of rbp
+
+  // Set firstAR->m_savedRbp to point to this frame.
+  "mov %rsp, (%r8)\n"
+
   // Save infoPtr
   "push %rcx\n"
-  "sub $0x8, %rsp\n"
-  // Call into translated code
-  "mov %rbp, (%r8)\n"
-  "mov %rdi, %rbx\n"
-  "mov %rsi, %rbp\n"
-  "mov %r9, %r12\n"
-  "mov 0x30(%rcx), %r15\n"
-  // The translated code we are about to enter does not follow the standard
-  // prologue of pushing rbp at entry, so we are purposely 8 bytes short
-  // of 16-byte alignment before this call instruction so that the return
-  // address being pushed will make the native stack 16-byte aligned.
+  ".cfi_adjust_cfa_offset 8\n"
+
+  // Set up special registers used for translated code.
+  "mov %rdi, %rbx\n"          // rVmSp
+  "mov %r9, %r12\n"           // rVmTl
+  "mov %rsi, %rbp\n"          // rVmFp
+  "mov 0x30(%rcx), %r15\n"    // restore previous r15 value
+
+  // The translated code we are about to enter does not follow the
+  // standard prologue of pushing rbp at entry, so we are purposely 8
+  // bytes short of 16-byte alignment before this call instruction so
+  // that the return address being pushed will make the native stack
+  // 16-byte aligned.
   "call *%rdx\n"
-  // Restore requestNumAddr into r14
-  "add $0x8, %rsp\n"
+
+  // Restore infoPtr into r14
   "pop %r14\n"
+  ".cfi_adjust_cfa_offset -8\n"
+
   // Copy the values passed from jitted code into *infoPtr
-  "mov %rdi, 0x0(%r14);\n"
-  "mov %rsi, 0x8(%r14);\n"
-  "mov %rdx, 0x10(%r14);\n"
-  "mov %rcx, 0x18(%r14);\n"
-  "mov %r8,  0x20(%r14);\n"
-  "mov %r9,  0x28(%r14);\n"
-  "mov %r15, 0x30(%r14);\n"
-  // Restore callee-saved registers
-  "pop %r15\n"
-  "pop %r14\n"
-  "pop %r13\n"
-  "pop %r12\n"
-  "pop %rbx\n"
+  "mov %rdi, 0x0(%r14)\n"
+  "mov %rsi, 0x8(%r14)\n"
+  "mov %rdx, 0x10(%r14)\n"
+  "mov %rcx, 0x18(%r14)\n"
+  "mov %r8,  0x20(%r14)\n"
+  "mov %r9,  0x28(%r14)\n"
+  "mov %r15, 0x30(%r14)\n"
+
   // Epilogue
   "pop %rbp\n"
-  ".cfi_def_cfa rsp, 8\n"
+  ".cfi_restore rbp\n"
+  ".cfi_adjust_cfa_offset -8\n"
   "ret\n"
   ".cfi_endproc\n"
 );
@@ -3165,7 +3230,7 @@ void enterTCHelper(Cell* vm_sp,
                    Cell* vm_fp,
                    unsigned char* start,
                    TReqInfo* infoPtr,
-                   ActRec* firstARAddr,
+                   ActRec* firstAR,
                    uint8_t* targetCacheBase) asm ("__enterTCHelper");
 
 struct DepthGuard {
@@ -3194,39 +3259,42 @@ TranslatorX64::enterTC(SrcKey sk) {
 
     TRACE(4, "enterTC: %p fp%p(%s) sp%p enter {\n", start,
           vmfp(), ((ActRec*)vmfp())->m_func->name()->data(), vmsp());
-    m_writeLease.gremlinUnlock();
+    s_writeLease.gremlinUnlock();
     // Keep dispatching until we end up somewhere the translator
     // recognizes, or we luck out and the leaseholder exits.
     while (!start) {
       TRACE(4, "enterTC forwarding BB to interpreter\n");
       g_vmContext->m_pc = curUnit()->at(sk.offset());
+      INC_TPC(interp_bb);
       g_vmContext->dispatchBB();
-      if (UNLIKELY(g_vmContext->isHalted() ||
-                   g_vmContext->getPC() == NULL)) {
-        return;
-      }
       sk = SrcKey(curFunc(), g_vmContext->getPC());
       start = getTranslation(&sk, true);
     }
     ASSERT(start);
+    ASSERT(isValidCodeAddress(start));
     tl_regState = REGSTATE_DIRTY;
-    ASSERT(!m_writeLease.amOwner());
+    ASSERT(!s_writeLease.amOwner());
     curFunc()->validate();
+    INC_TPC(enter_tc);
+
+    // The asm volatile here is to force C++ to spill anything that
+    // might be in a callee-saved register (aside from rbp).
+    // enterTCHelper does not preserve these registers.
+    asm volatile("" : : : "rbx","r12","r13","r14","r15");
     enterTCHelper(vmsp(), vmfp(), start, &info, vmFirstAR(),
                   tl_targetCaches.base);
+    asm volatile("" : : : "rbx","r12","r13","r14","r15");
+
     tl_regState = REGSTATE_CLEAN; // Careful: pc isn't sync'ed yet.
     // Debugging code: cede the write lease half the time.
     if (debug && (RuntimeOption::EvalJitStressLease)) {
       if (d.m_depth == 1 && (rand() % 2) == 0) {
-        m_writeLease.gremlinLock();
+        s_writeLease.gremlinLock();
       }
     }
 
     TRACE(4, "enterTC: %p fp%p sp%p } return\n", start,
           vmfp(), vmsp());
-    if (g_vmContext->isHalted()) {
-      return;
-    }
     TRACE(4, "enterTC: request(%s) args: %lx %lx %lx %lx %lx\n",
           reqName(requestNum),
           args[0], args[1], args[2], args[3], args[4]);
@@ -3249,6 +3317,7 @@ TranslatorX64::enterTC(SrcKey sk) {
     // while start == the point in the TC that's "half-way through" the
     // Call instruction. If we punt to the interpreter, the interpreter
     // will redo some of the work that the translator has already done.
+    INC_TPC(service_req);
     switch (requestNum) {
       case REQ_EXIT: {
         // fp is not valid anymore
@@ -3272,7 +3341,7 @@ TranslatorX64::enterTC(SrcKey sk) {
           TRACE(2, "enterTC: bindCall immutably %s -> %p\n",
                 func->name()->data(), dest);
         }
-        LeaseHolder writer(m_writeLease, NO_ACQUIRE);
+        LeaseHolder writer(s_writeLease, NO_ACQUIRE);
         if (dest && writer.acquire()) {
           TRACE(2, "enterTC: bindCall smash %p -> %p\n", toSmash, dest);
           smash(tx64->getAsmFor(toSmash), toSmash, dest);
@@ -3319,7 +3388,21 @@ TranslatorX64::enterTC(SrcKey sk) {
         sk = SrcKey(curFunc(), off);
       } break;
 
+      case REQ_BIND_REQUIRE: {
+        ReqLitStaticArgs* rlsa = (ReqLitStaticArgs*)args[0];
+        sk = SrcKey((Func*)args[1], (Offset)args[2]);
+        start = getTranslation(&sk, true);
+        if (start) {
+          LeaseHolder writer(s_writeLease);
+          if (writer) {
+            SrcRec* sr = getSrcRec(sk);
+            sr->chainFrom(a, IncomingBranch(&rlsa->m_pseudoMain));
+          }
+        }
+      } break;
+
       case REQ_RETRANSLATE: {
+        INC_TPC(retranslate);
         sk = SrcKey(curFunc(), (Offset)args[0]);
         start = retranslate(sk, true);
         SKTRACE(2, sk, "retranslated @%p\n", start);
@@ -3337,13 +3420,12 @@ TranslatorX64::enterTC(SrcKey sk) {
         ASSERT(numInstrs >= 0);
         ONTRACE(5, SrcKey(curFunc(), off).trace("interp: enter\n"));
         if (numInstrs) {
+          s_perfCounters[tpc_interp_instr] += numInstrs;
           g_vmContext->dispatchN(numInstrs);
         } else {
           // numInstrs == 0 means it wants to dispatch until BB ends
+          INC_TPC(interp_bb);
           g_vmContext->dispatchBB();
-        }
-        if (UNLIKELY(g_vmContext->getPC() == NULL)) {
-          return;
         }
         SrcKey newSk(curFunc(), g_vmContext->getPC());
         SKTRACE(5, newSk, "interp: exit\n");
@@ -3435,7 +3517,7 @@ TranslatorX64::emitServiceReqVA(bool align, ServiceRequest req, int numArgs,
    * Weird hand-shaking with enterTC: reverse-call a service routine.
    */
   astubs.    ret();
-  Debug::recordBCInstr(OpServiceRequest, retval, astubs.code.frontier);
+  recordBCInstr(OpServiceRequest, astubs, retval);
   translator_not_reached(astubs);
   return retval;
 }
@@ -3483,7 +3565,9 @@ TranslatorX64::spillTo(DataType type, PhysReg reg, bool writeType,
   if (writeType) {
     a.    store_imm32_disp_reg(type, disp + TVOFF(m_type), base);
   }
-  a.      store_reg64_disp_reg64(reg, disp + TVOFF(m_data), base);
+  if (!IS_NULL_TYPE(type)) {
+    a.    store_reg64_disp_reg64(reg, disp + TVOFF(m_data), base);
+  }
 }
 
 void
@@ -3493,7 +3577,7 @@ TranslatorX64::spill(const Location& loc, DataType type,
   int disp;
   locToRegDisp(loc, &base, &disp);
   spillTo(type, reg, writeType, base, disp);
-  TRACE(2, "%s: (%s, %d) -> v: %d(r%d) type%d\n",
+  TRACE(2, "%s: (%s, %lld) -> v: %d(r%d) type%d\n",
         __func__,
         loc.spaceName(), loc.offset, int(disp + TVOFF(m_data)), base, type);
 }
@@ -3504,7 +3588,7 @@ TranslatorX64::fill(const Location& loc, PhysReg reg) {
   PhysReg base;
   int disp;
   locToRegDisp(loc, &base, &disp);
-  TRACE(2, "fill: (%s, %d) -> reg %d\n",
+  TRACE(2, "fill: (%s, %lld) -> reg %d\n",
         loc.spaceName(), loc.offset, reg);
   m_spillFillCode->load_reg64_disp_reg64(base, disp + TVOFF(m_data), reg);
 }
@@ -3564,7 +3648,7 @@ TranslatorX64::syncOutputs(int stackOff) {
   }
   // All registers have been smashed for realz, yo
   m_regMap.smashRegs(kAllRegs);
-  Debug::recordBCInstr(OpSyncOutputs, start, a.code.frontier);
+  recordBCInstr(OpSyncOutputs, a, start);
 }
 
 /*
@@ -3596,7 +3680,7 @@ TranslatorX64::emitBox(DataType t, PhysReg rSrc) {
   // tvBoxHelper will set the refcount of the inner cell to 1
   // for us. Because the inner cell now holds a reference to the
   // original value, we don't need to perform a decRef.
-  EMIT_CALL2(a, tvBoxHelper, IMM(t), R(rSrc));
+  EMIT_CALL(a, tvBoxHelper, IMM(t), R(rSrc));
 }
 
 // emitUnboxTopOfStack --
@@ -3626,7 +3710,7 @@ TranslatorX64::emitUnboxTopOfStack(const NormalizedInstruction& i) {
   emitDeref(a, rSrc, rDest);
   emitIncRef(rDest, outType);
   // decRef the var on the evaluation stack
-  emitDecRef(i, rSrc, KindOfVariant);
+  emitDecRef(i, rSrc, KindOfRef);
   m_regMap.freeScratchReg(rSrc);
 }
 
@@ -3682,9 +3766,9 @@ TranslatorX64::binaryArithCell(const NormalizedInstruction &i,
                                const DynLocation& inout) {
   ASSERT(in1.rtt.isInt());
   ASSERT(inout.rtt.isInt());
-  ASSERT(in1.outerType() != KindOfVariant);
+  ASSERT(in1.outerType() != KindOfRef);
   ASSERT(in1.isStack());
-  ASSERT(inout.outerType() != KindOfVariant);
+  ASSERT(inout.outerType() != KindOfRef);
   ASSERT(inout.isStack());
   m_regMap.allocOutputRegs(i);
   PhysReg     srcReg = m_regMap.getReg(in1.location);
@@ -3701,7 +3785,7 @@ TranslatorX64::binaryArithLocal(const NormalizedInstruction &i,
   // The caller must guarantee that these conditions hold
   ASSERT(in1.rtt.isInt());
   ASSERT(in2.rtt.isInt());
-  ASSERT(in1.outerType() != KindOfVariant);
+  ASSERT(in1.outerType() != KindOfRef);
   ASSERT(in1.isStack());
   ASSERT(in2.isLocal());
   ASSERT(out.isStack());
@@ -3709,7 +3793,7 @@ TranslatorX64::binaryArithLocal(const NormalizedInstruction &i,
   PhysReg srcReg = m_regMap.getReg(in1.location);
   PhysReg outReg = m_regMap.getReg(out.location);
   PhysReg localReg = m_regMap.getReg(in2.location);
-  if (in2.outerType() != KindOfVariant) {
+  if (in2.outerType() != KindOfRef) {
     // The local is not a var, so we can operate directly on the
     // local's register. We will need to update outReg after the
     // operation.
@@ -3729,41 +3813,42 @@ TranslatorX64::binaryArithLocal(const NormalizedInstruction &i,
   }
 }
 
-struct InterpRegSetter {
-  InterpRegSetter(ActRec* ar, Cell* sp, Offset pcOff) {
-    ASSERT(tl_regState == REGSTATE_DIRTY);
-    tl_regState = REGSTATE_CLEAN;
-    vmfp() = (Cell*)ar;
-    vmsp() = sp;
-    vmpc() = curUnit()->at(pcOff);
-    ASSERT(vmsp() <= vmfp());
-  }
-  ~InterpRegSetter() {
-    tl_regState = REGSTATE_DIRTY;
-  }
-};
+static void interp_set_regs(ActRec* ar, Cell* sp, Offset pcOff) {
+  ASSERT(tl_regState == REGSTATE_DIRTY);
+  tl_regState = REGSTATE_CLEAN;
+  vmfp() = (Cell*)ar;
+  vmsp() = sp;
+  vmpc() = curUnit()->at(pcOff);
+  ASSERT(vmsp() <= vmfp());
+}
 
 #define O(opcode, imm, pusph, pop, flags) \
 /**
- * The interpOne methods saves m_pc, m_fp, and m_sp ExecutionContext, calls
- * into the interpreter, and then return a pointer to the current
- * ExecutionContext. Since these can obviously throw, wrap these in
- * EXCEPTION_GATE's.
+ * The interpOne methods saves m_pc, m_fp, and m_sp ExecutionContext,
+ * calls into the interpreter, and then return a pointer to the
+ * current ExecutionContext.
  */  \
 VMExecutionContext*                                                     \
 interpOne##opcode(ActRec* ar, Cell* sp, Offset pcOff) {                 \
-  InterpRegSetter _(ar, sp, pcOff);                                     \
+  interp_set_regs(ar, sp, pcOff);                                       \
   SKTRACE(5, SrcKey(curFunc(), vmpc()), "%40s %p %p\n",                 \
           "interpOne" #opcode " before (fp,sp)",                        \
           vmfp(), vmsp());                                              \
   ASSERT(*vmpc() == Op ## opcode);                                      \
   VMExecutionContext* ec = g_vmContext;                                 \
   Stats::inc(Stats::Instr_InterpOne ## opcode);                         \
+  INC_TPC(interp_one)                                                   \
   /* Correct for over-counting in TC-stats. */                          \
   Stats::inc(Stats::Instr_TC, -1);                                      \
-  EXCEPTION_GATE_ENTER();                                               \
   ec->op##opcode();                                                     \
-  EXCEPTION_GATE_RETURN(ec);                                            \
+  /*
+   * Only set regstate back to dirty if an exception is not
+   * propagating.  If an exception is throwing, regstate for this call
+   * is actually still correct, and we don't have information in the
+   * fixup map for interpOne calls anyway.
+   */ \
+  tl_regState = REGSTATE_DIRTY;                                         \
+  return ec;;                                                           \
 }
 
 OPCODES
@@ -3776,10 +3861,7 @@ OPCODES
 #undef O
 };
 
-void TranslatorX64::fixup(VMExecutionContext* ec) const {
-  ActRec* rbp;
-  asm volatile("mov %%rbp, %0" : "=r"(rbp));
-
+void TranslatorX64::fixupWork(VMExecutionContext* ec, ActRec* rbp) const {
   ASSERT(RuntimeOption::EvalJit);
   ActRec* nextAr = rbp;
   do {
@@ -3804,6 +3886,14 @@ void TranslatorX64::fixup(VMExecutionContext* ec) const {
   NOT_REACHED();
 }
 
+void TranslatorX64::fixup(VMExecutionContext* ec) const {
+  // Start looking for fixup entries at the current (C++) frame.  This
+  // will walk the frames upward until we find a TC frame.
+  ActRec* rbp;
+  asm volatile("mov %%rbp, %0" : "=r"(rbp));
+  fixupWork(ec, rbp);
+}
+
 void
 TranslatorX64::syncWork() {
   ASSERT(tl_regState == REGSTATE_DIRTY);
@@ -3824,7 +3914,7 @@ TranslatorX64::emitInterpOne(const Tracelet& t,
   }
   void* func = interpOneEntryPoints[ni.op()];
   TRACE(3, "ip %p of unit %p -> interpOne @%p\n", ni.pc(), ni.unit(), func);
-  EMIT_CALL3(a, func,
+  EMIT_CALL(a, func,
              R(rVmFp),
              RPLUS(rVmSp, -int32_t(cellsToBytes(ni.stackOff))),
              IMM(ni.source.offset()));
@@ -3930,6 +4020,7 @@ void
 TranslatorX64::analyzeSameOp(Tracelet& t, NormalizedInstruction& i) {
   ASSERT(!(planSameOp_SameTypes(i) && planSameOp_DifferentTypes(i)));
   i.m_txFlags = TXFlags(planSameOp_SameTypes(i) | planSameOp_DifferentTypes(i));
+  i.manuallyAllocInputs = true;
 }
 
 void
@@ -3942,20 +4033,17 @@ TranslatorX64::translateSameOp(const Tracelet& t,
   ASSERT(inputs.size() == 2);
   ASSERT(i.outStack && !i.outLocal);
   DataType leftType = i.inputs[0]->outerType();
-  DataType rightType = i.inputs[1]->outerType();
-  ASSERT(leftType != KindOfVariant);
-  ASSERT(rightType != KindOfVariant);
+  DataType rightType DEBUG_ONLY = i.inputs[1]->outerType();
+  ASSERT(leftType != KindOfRef);
+  ASSERT(rightType != KindOfRef);
 
   if (planSameOp_DifferentTypes(i)) {
     // Some easy cases: when the valueTypes do not match,
     // NSame -> true and Same -> false.
     SKTRACE(1, i.source, "different types %d %d\n",
             leftType, rightType);
-    // decRef the left hand side and right hand side as appropriate
-    PhysReg src, srcdest;
-    getBinaryStackInputs(m_regMap, i, src, srcdest);
-    emitDecRef(i, src, leftType);
-    emitDecRef(i, srcdest, rightType);
+    emitDecRefInput(a, i, 0);
+    emitDecRefInput(a, i, 1);
     m_regMap.allocOutputRegs(i);
     emitImmReg(a, instrNeg, getReg(i.outStack->location));
     return; // Done
@@ -3963,16 +4051,19 @@ TranslatorX64::translateSameOp(const Tracelet& t,
 
   ASSERT(planSameOp_SameTypes(i));
 
-  m_regMap.allocOutputRegs(i);
-
   if (IS_NULL_TYPE(leftType)) {
+    m_regMap.allocOutputRegs(i);
     // null === null is always true
     SKTRACE(2, i.source, "straightening null/null comparison\n");
     emitImmReg(a, !instrNeg, getReg(i.outStack->location));
     return; // Done
   }
   if (IS_STRING_TYPE(leftType)) {
-    EMIT_CALL2(a, same_str_str,
+    int args[2];
+    args[0] = 0;
+    args[1] = 1;
+    allocInputsForCall(i, args);
+    EMIT_CALL(a, same_str_str,
                V(inputs[0]->location),
                V(inputs[1]->location));
     if (instrNeg) {
@@ -3982,8 +4073,10 @@ TranslatorX64::translateSameOp(const Tracelet& t,
                   RegInfo::DIRTY);
     return; // Done
   }
+  m_regMap.allocInputRegs(i);
   PhysReg src, srcdest;
   getBinaryStackInputs(m_regMap, i, src, srcdest);
+  m_regMap.allocOutputRegs(i);
   ASSERT(getReg(i.outStack->location) == srcdest);
   a.    cmp_reg64_reg64(src, srcdest);
   if (op == OpSame) {
@@ -4038,13 +4131,12 @@ TranslatorX64::translateEqOp(const Tracelet& t,
   ASSERT(i.outStack && !i.outLocal);
   DataType leftType = i.inputs[0]->outerType();
   DataType rightType = i.inputs[1]->outerType();
-  ASSERT(leftType != KindOfVariant);
-  ASSERT(rightType != KindOfVariant);
+  ASSERT(leftType != KindOfRef);
+  ASSERT(rightType != KindOfRef);
 
   ConditionCode ccBranch = CC_E;
   if (instrNeg) ccBranch = ccNegate(ccBranch);
 
-  m_regMap.allocOutputRegs(i);
   // Inputless case.
   if (IS_NULL_TYPE(leftType) && IS_NULL_TYPE(rightType)) {
     ASSERT(i.manuallyAllocInputs);
@@ -4054,12 +4146,11 @@ TranslatorX64::translateEqOp(const Tracelet& t,
     if (i.changesPC) {
       fuseBranchAfterStaticBool(t, i, result);
     } else {
+      m_regMap.allocOutputRegs(i);
       emitImmReg(a, result, getReg(i.outStack->location));
     }
     return; // Done
   }
-  PhysReg src, srcdest;
-  getBinaryStackInputs(m_regMap, i, src, srcdest);
 
   if (IS_STRING_TYPE(leftType) || IS_STRING_TYPE(rightType)) {
     void* fptr = NULL;
@@ -4083,28 +4174,31 @@ TranslatorX64::translateEqOp(const Tracelet& t,
     }
     if (eqNullStr) {
       ASSERT(fptr == (void*)eq_null_str);
-      EMIT_CALL1(a, fptr,
+      EMIT_CALL(a, fptr,
                  V(inputs[leftIsString ? 0 : 1]->location));
     } else {
       ASSERT(fptr != NULL);
-      EMIT_CALL2(a, fptr,
+      EMIT_CALL(a, fptr,
                  V(inputs[leftIsString ? 1 : 0]->location),
                  V(inputs[leftIsString ? 0 : 1]->location));
     }
-    m_regMap.bind(rax, i.outStack->location, i.outStack->outerType(),
-                  RegInfo::DIRTY);
     if (i.changesPC) {
       fuseBranchSync(t, i);
       a.   test_imm32_reg32(1, rax);
       fuseBranchAfterBool(t, i, ccNegate(ccBranch));
       return;
     }
+    m_regMap.bind(rax, i.outStack->location, i.outStack->outerType(),
+                  RegInfo::DIRTY);
     if (instrNeg) {
       a.  xor_imm32_reg32(1, rax);
     }
     return;
   }
 
+  m_regMap.allocOutputRegs(i);
+  PhysReg src, srcdest;
+  getBinaryStackInputs(m_regMap, i, src, srcdest);
   ASSERT(getReg(i.outStack->location) == srcdest);
   if (i.changesPC) {
     fuseBranchSync(t, i);
@@ -4164,8 +4258,8 @@ TranslatorX64::translateLtGtOp(const Tracelet& t,
   ASSERT(i.isNative());
   ASSERT(i.inputs.size() == 2);
   ASSERT(i.outStack && !i.outLocal);
-  ASSERT(i.inputs[0]->outerType() != KindOfVariant);
-  ASSERT(i.inputs[1]->outerType() != KindOfVariant);
+  ASSERT(i.inputs[0]->outerType() != KindOfRef);
+  ASSERT(i.inputs[1]->outerType() != KindOfRef);
 
   bool fEquals = (op == OpLte || op == OpGte);
   bool fLessThan = (op == OpLt || op == OpLte);
@@ -4237,7 +4331,7 @@ TranslatorX64::translateUnaryBooleanOp(const Tracelet& t,
   bool instrNeg = (op == OpEmptyL);
   DataType inType = inputs[0]->valueType();
   const Location& inLoc = inputs[0]->location;
-  bool boxedForm = (inputs[0]->outerType() == KindOfVariant);
+  bool boxedForm = (inputs[0]->outerType() == KindOfRef);
 
 
   switch (inType) {
@@ -4252,7 +4346,7 @@ TranslatorX64::translateUnaryBooleanOp(const Tracelet& t,
         // Casting bool to bool is a nop.  CastBool's input must be
         // a cell on the stack as per the bytecode specification.
         ASSERT(inputs[0]->isStack());
-        ASSERT(inputs[0]->outerType() != KindOfVariant);
+        ASSERT(inputs[0]->outerType() != KindOfRef);
         ASSERT(inputs[0]->location.space == Location::Stack);
         ASSERT(i.isNative());
         break;
@@ -4288,9 +4382,9 @@ TranslatorX64::translateUnaryBooleanOp(const Tracelet& t,
           (doDecRef ? (void*)str_to_bool : (void*)str0_to_bool) :
           (doDecRef ? (void*)arr_to_bool : (void*)arr0_to_bool);
       if (boxedForm) {
-        EMIT_CALL1(a, fptr, DEREF(inLoc));
+        EMIT_CALL(a, fptr, DEREF(inLoc));
       } else {
-        EMIT_CALL1(a, fptr, V(inLoc));
+        EMIT_CALL(a, fptr, V(inLoc));
       }
       if (!IS_STRING_TYPE(inType)) {
         recordReentrantCall(i);
@@ -4390,7 +4484,7 @@ TranslatorX64::translateBranchOp(const Tracelet& t,
     // str_to_bool and arr_to_bool will decRef for us
     void* fptr = IS_STRING_TYPE(inputType) ? (void*)str_to_bool :
                                                (void*)arr_to_bool;
-    EMIT_CALL1(a, fptr, V(inLoc));
+    EMIT_CALL(a, fptr, V(inLoc));
     src = rax;
     ScratchReg sr(m_regMap, rax);
     syncOutputs(t);
@@ -4410,7 +4504,7 @@ TranslatorX64::translateBranchOp(const Tracelet& t,
     }
     TRACE(2, Trace::prettyNode("tv_to_bool", inLoc) + string("\n"));
     // tv_to_bool will decRef for us if appropriate
-    EMIT_CALL1(a, tv_to_bool, A(inLoc));
+    EMIT_CALL(a, tv_to_bool, A(inLoc));
     recordReentrantCall(i);
     src = rax;
     ScratchReg sr(m_regMap, rax);
@@ -4450,10 +4544,10 @@ static const StringData* local_name(const Location& l) {
 }
 
 static void raiseUndefVariable(StringData* nm) {
-  EXCEPTION_GATE_ENTER();
   raise_notice(Strings::UNDEFINED_VARIABLE, nm->data());
+  // FIXME: do we need to decref the string if an exception is
+  // propagating?
   if (nm->decRefCount() == 0) { nm->release(); }
-  EXCEPTION_GATE_LEAVE();
 }
 
 void
@@ -4463,22 +4557,36 @@ TranslatorX64::translateCGetL(const Tracelet& t,
   ASSERT(op == OpFPassL || OpCGetL);
   const vector<DynLocation*>& inputs = i.inputs;
   ASSERT(inputs.size() == 1);
-  ASSERT(i.outStack);
   ASSERT(inputs[0]->isLocal());
-  DataType outType = i.outStack->valueType();
+  DataType outType = i.inputs[0]->valueType();
   ASSERT(outType != KindOfInvalid);
-  m_regMap.allocOutputRegs(i);
-  PhysReg dest = getReg(i.outStack->location);
 
   // Check for use of an undefined local.
   if (inputs[0]->rtt.isUninit()) {
-    ASSERT(outType == KindOfNull);
+    ASSERT(!i.outStack || i.outStack->outerType() == KindOfNull);
+    outType = KindOfNull;
     ASSERT(inputs[0]->location.offset < curFunc()->numLocals());
     const StringData* name = local_name(inputs[0]->location);
-    EMIT_CALL1(a, raiseUndefVariable, IMM((uintptr_t)name));
+    EMIT_CALL(a, raiseUndefVariable, IMM((uintptr_t)name));
     recordReentrantCall(i);
+    if (i.outStack) {
+      m_regMap.allocOutputRegs(i);
+    }
     return;
   }
+
+  /*
+   * we can merge a CGetL with a following InstanceOfD
+   * to avoid the incRef/decRef on the result (see
+   * analyzeSecondPass).
+   *
+   * outStack will be clear in that case.
+   */
+  if (!i.outStack) return;
+  ASSERT(outType == i.outStack->outerType());
+  m_regMap.allocOutputRegs(i);
+  if (IS_NULL_TYPE(outType)) return;
+  PhysReg dest = getReg(i.outStack->location);
 
   if (i.manuallyAllocInputs && !m_regMap.hasReg(inputs[0]->location)) {
     fill(inputs[0]->location, dest);
@@ -4516,7 +4624,7 @@ TranslatorX64::translateCGetL2(const Tracelet& t,
     ASSERT(ni.inputs[locIdx]->location.offset < curFunc()->numLocals());
     const StringData* name = local_name(ni.inputs[locIdx]->location);
 
-    EMIT_CALL1(a, raiseUndefVariable, IMM((uintptr_t)name));
+    EMIT_CALL(a, raiseUndefVariable, IMM((uintptr_t)name));
     recordReentrantCall(ni);
 
     m_regMap.allocInputRegs(ni);
@@ -4560,13 +4668,13 @@ TranslatorX64::translateVGetL(const Tracelet& t,
   ASSERT(inputs.size() == 1);
   ASSERT(i.outStack);
   ASSERT(inputs[0]->isLocal());
-  ASSERT(i.outStack->rtt.outerType() == KindOfVariant);
+  ASSERT(i.outStack->rtt.outerType() == KindOfRef);
 
   PhysReg localReg = getReg(inputs[0]->location);
   PhysReg dest;
-  if (inputs[0]->rtt.outerType() != KindOfVariant) {
+  if (inputs[0]->rtt.outerType() != KindOfRef) {
     emitBox(inputs[0]->rtt.outerType(), localReg);
-    m_regMap.bind(rax, inputs[0]->location, KindOfVariant,
+    m_regMap.bind(rax, inputs[0]->location, KindOfRef,
                   RegInfo::DIRTY);
     m_regMap.allocOutputRegs(i);
     dest = getReg(i.outStack->location);
@@ -4576,7 +4684,7 @@ TranslatorX64::translateVGetL(const Tracelet& t,
     dest = getReg(i.outStack->location);
     emitMovRegReg(localReg, dest);
   }
-  emitIncRef(dest, KindOfVariant);
+  emitIncRef(dest, KindOfRef);
 }
 
 void
@@ -4595,7 +4703,7 @@ TranslatorX64::translateAssignToLocalOp(const Tracelet& t,
   ASSERT(op == OpSetL || op == OpBindL);
   ASSERT(ni.inputs.size() == 2);
   ASSERT((op == OpBindL) ==
-         (ni.inputs[rhsIdx]->outerType() == KindOfVariant));
+         (ni.inputs[rhsIdx]->outerType() == KindOfRef));
 
   ASSERT(!ni.outStack || ni.inputs[locIdx]->location != ni.outStack->location);
   ASSERT(ni.outLocal);
@@ -4617,9 +4725,9 @@ TranslatorX64::translateAssignToLocalOp(const Tracelet& t,
   // want to affect the old inner cell in any case (except to decref
   // it).
   const bool affectInnerCell = op == OpSetL &&
-                               oldLocalType == KindOfVariant;
+                               oldLocalType == KindOfRef;
   if (affectInnerCell) {
-    ASSERT(rhsType != KindOfVariant);
+    ASSERT(rhsType != KindOfRef);
 
     oldLocalReg.alloc();
     emitDeref(a, localReg, *oldLocalReg);
@@ -4650,7 +4758,7 @@ TranslatorX64::translateAssignToLocalOp(const Tracelet& t,
   emitDecRef(ni, oldLocalReg.isAllocated() ? *oldLocalReg : localReg,
     decRefType);
 
-  if (ni.outStack) {
+  if (ni.outStack && !IS_NULL_TYPE(ni.outStack->outerType())) {
     PhysReg stackReg = getReg(ni.outStack->location);
     emitMovRegReg(rhsReg, stackReg);
   }
@@ -4658,9 +4766,14 @@ TranslatorX64::translateAssignToLocalOp(const Tracelet& t,
 
 static void
 planPop(NormalizedInstruction& i) {
+  if (i.prev && i.prev->outputPredicted) {
+    i.prev->outputPredicted = false;
+    i.inputs[0]->rtt = RuntimeType(KindOfInvalid);
+  }
   DataType type = i.inputs[0]->outerType();
   i.m_txFlags =
     (type == KindOfInvalid || IS_REFCOUNTED_TYPE(type)) ? Supported : Native;
+  i.manuallyAllocInputs = true;
 }
 
 void TranslatorX64::analyzePopC(Tracelet& t, NormalizedInstruction& i) {
@@ -4686,9 +4799,7 @@ TranslatorX64::translatePopC(const Tracelet& t,
     locToRegDisp(i.inputs[0]->location, &base, &disp);
     emitDecRefGeneric(i, base, disp);
   } else {
-    DataType type = i.inputs[0]->outerType();
-    PhysReg srcReg = getReg(i.inputs[0]->location);
-    emitDecRef(i, srcReg, type);
+    emitDecRefInput(a, i, 0);
   }
 }
 
@@ -4718,55 +4829,63 @@ TranslatorX64::translateUnboxR(const Tracelet& t,
 
 void
 TranslatorX64::translateNull(const Tracelet& t,
-                                  const NormalizedInstruction& i) {
+                             const NormalizedInstruction& i) {
   ASSERT(i.inputs.size() == 0);
-  ASSERT(i.outStack && !i.outLocal);
-  ASSERT(i.outStack->outerType() == KindOfNull);
+  ASSERT(!i.outLocal);
+  if (i.outStack) {
+    ASSERT(i.outStack->outerType() == KindOfNull);
 
-  // We have to mark the output register as dirty to ensure that
-  // the type gets spilled at the end of the tracelet
-  m_regMap.allocOutputRegs(i);
-
+    // We have to mark the output register as dirty to ensure that
+    // the type gets spilled at the end of the tracelet
+    m_regMap.allocOutputRegs(i);
+  }
   /* nop */
 }
 
 void
 TranslatorX64::translateTrue(const Tracelet& t,
-                                  const NormalizedInstruction& i) {
+                             const NormalizedInstruction& i) {
   ASSERT(i.inputs.size() == 0);
-  ASSERT(i.outStack && !i.outLocal);
-  m_regMap.allocOutputRegs(i);
-  PhysReg rdest = getReg(i.outStack->location);
-  emitImmReg(a, 1, rdest);
+  ASSERT(!i.outLocal);
+  if (i.outStack) {
+    m_regMap.allocOutputRegs(i);
+    PhysReg rdest = getReg(i.outStack->location);
+    emitImmReg(a, 1, rdest);
+  }
 }
 
 void
 TranslatorX64::translateFalse(const Tracelet& t,
-                                   const NormalizedInstruction& i) {
+                              const NormalizedInstruction& i) {
   ASSERT(i.inputs.size() == 0);
-  ASSERT(i.outStack && !i.outLocal);
-  m_regMap.allocOutputRegs(i);
-  PhysReg dest = getReg(i.outStack->location);
-  emitImmReg(a, false, dest);
+  ASSERT(!i.outLocal);
+  if (i.outStack) {
+    m_regMap.allocOutputRegs(i);
+    PhysReg dest = getReg(i.outStack->location);
+    emitImmReg(a, false, dest);
+  }
 }
 
 void
 TranslatorX64::translateInt(const Tracelet& t,
                             const NormalizedInstruction& i) {
   ASSERT(i.inputs.size()  == 0);
-  ASSERT(i.outStack && !i.outLocal);
-  ASSERT(i.outStack->isInt());
-  m_regMap.allocOutputRegs(i);
-  PhysReg dest = getReg(i.outStack->location);
-  uint64_t srcImm = i.imm[0].u_I64A;
-  emitImmReg(a, srcImm, dest);
+  ASSERT(!i.outLocal);
+  if (i.outStack) {
+    ASSERT(i.outStack->isInt());
+    m_regMap.allocOutputRegs(i);
+    PhysReg dest = getReg(i.outStack->location);
+    uint64_t srcImm = i.imm[0].u_I64A;
+    emitImmReg(a, srcImm, dest);
+  }
 }
 
 void
 TranslatorX64::translateString(const Tracelet& t,
                                const NormalizedInstruction& i) {
   ASSERT(i.inputs.size()  == 0);
-  ASSERT(i.outStack && !i.outLocal);
+  ASSERT(!i.outLocal);
+  if (!i.outStack) return;
   ASSERT(Translator::typeIsString(i.outStack->outerType()));
   m_regMap.allocOutputRegs(i);
   PhysReg dest = getReg(i.outStack->location);
@@ -4786,15 +4905,17 @@ void
 TranslatorX64::translateArray(const Tracelet& t,
                               const NormalizedInstruction& i) {
   ASSERT(i.inputs.size() == 0);
-  ASSERT(i.outStack && !i.outLocal);
-  ASSERT(i.outStack->outerType() == KindOfArray);
-  m_regMap.allocOutputRegs(i);
-  ArrayData* ad = curUnit()->lookupArrayId(i.imm[0].u_AA);
-  PhysReg r = getReg(i.outStack->location);
-  emitImmReg(a, uint64(ad), r);
-  // We are guaranteed that the array is static, so we do not need to
-  // increment the refcount
-  ASSERT(ad->isStatic());
+  ASSERT(!i.outLocal);
+  if (i.outStack) {
+    ASSERT(i.outStack->outerType() == KindOfArray);
+    m_regMap.allocOutputRegs(i);
+    ArrayData* ad = curUnit()->lookupArrayId(i.imm[0].u_AA);
+    PhysReg r = getReg(i.outStack->location);
+    emitImmReg(a, uint64(ad), r);
+    // We are guaranteed that the array is static, so we do not need to
+    // increment the refcount
+    ASSERT(ad->isStatic());
+  }
 }
 
 void
@@ -4805,10 +4926,10 @@ TranslatorX64::translateNewArray(const Tracelet& t,
   ASSERT(i.outStack->outerType() == KindOfArray);
   m_regMap.allocOutputRegs(i);
   PhysReg r = getReg(i.outStack->location);
-  emitImmReg(a, uint64(StaticEmptyHphpArray::Get()), r);
+  emitImmReg(a, uint64(HphpArray::GetStaticEmptyArray()), r);
   // We are guaranteed that the new array is static, so we do not need to
   // increment the refcount
-  ASSERT(StaticEmptyHphpArray::Get()->isStatic());
+  ASSERT(HphpArray::GetStaticEmptyArray()->isStatic());
 }
 
 void
@@ -4869,7 +4990,7 @@ TranslatorX64::translateAddElemC(const Tracelet& t,
       printf("%p", ret); // use ret
     }
     // If the rhs is Int64, we can use a specialized helper
-    EMIT_CALL4(a, array_setm_ik1_iv,
+    EMIT_CALL(a, array_setm_ik1_iv,
                IMM(0),
                V(arrLoc),
                V(keyLoc),
@@ -4886,13 +5007,11 @@ TranslatorX64::translateAddElemC(const Tracelet& t,
       printf("%p", ret); // use ret
       ret = array_setm_sk1_v0(cell, arr, strkey, rhs);
       printf("%p", ret); // use ret
-      ret = array_setm_s0k1_v0(cell, arr, strkey, rhs);
-      printf("%p", ret); // use ret
     }
     // Otherwise, we pass the rhs by address
     fptr = key.rtt.isString() ? (void*)array_setm_sk1_v0 :
       (void*)array_setm_ik1_v0;
-    EMIT_CALL4(a, fptr,
+    EMIT_CALL(a, fptr,
                IMM(0),
                V(arrLoc),
                V(keyLoc),
@@ -4920,8 +5039,8 @@ TranslatorX64::translateAddNewElemC(const Tracelet& t,
                                          const NormalizedInstruction& i) {
   ASSERT(i.inputs.size() == 2);
   ASSERT(i.outStack && !i.outLocal);
-  ASSERT(i.inputs[0]->outerType() != KindOfVariant);
-  ASSERT(i.inputs[1]->outerType() != KindOfVariant);
+  ASSERT(i.inputs[0]->outerType() != KindOfRef);
+  ASSERT(i.inputs[1]->outerType() != KindOfRef);
   ASSERT(i.inputs[0]->isStack());
   ASSERT(i.inputs[1]->isStack());
 
@@ -4945,7 +5064,7 @@ TranslatorX64::translateAddNewElemC(const Tracelet& t,
     ret = array_setm_wk1_v0(cell, arr, rhs);
     printf("%p", ret); // use ret
   }
-  EMIT_CALL3(a, array_setm_wk1_v0,
+  EMIT_CALL(a, array_setm_wk1_v0,
              IMM(0),
              V(arrLoc),
              A(valLoc));
@@ -4959,9 +5078,8 @@ TranslatorX64::translateAddNewElemC(const Tracelet& t,
 }
 
 static void undefCns(const StringData* nm) {
-  EXCEPTION_GATE_ENTER();
   VMRegAnchor _;
-  TypedValue *cns = g_vmContext->getCns(const_cast<StringData*>(nm), false);
+  TypedValue *cns = g_vmContext->getCns(const_cast<StringData*>(nm));
   if (!cns) {
     raise_notice(Strings::UNDEFINED_CONSTANT, nm->data(), nm->data());
     g_vmContext->getStack().pushStringNoRc(const_cast<StringData*>(nm));
@@ -4969,7 +5087,6 @@ static void undefCns(const StringData* nm) {
     Cell* c1 = g_vmContext->getStack().allocC();
     TV_READ_CELL(cns, c1);
   }
-  EXCEPTION_GATE_LEAVE();
 }
 
 void TranslatorX64::emitSideExit(Asm& a, const NormalizedInstruction& i,
@@ -5015,9 +5132,8 @@ TranslatorX64::translateCns(const Tracelet& t,
       punt();
     }
   }
-  ASSERT((tv == NULL) == (outType == KindOfInvalid));
   using namespace TargetCache;
-  if (tv) {
+  if (tv && tvIsStatic(tv)) {
     m_regMap.allocOutputRegs(i);
     if (checkDefined) {
       size_t bit = allocCnsBit(name);
@@ -5064,7 +5180,7 @@ TranslatorX64::translateCns(const Tracelet& t,
     // at least stackDest and tmp are specific to the translation
     // context.
     UnlikelyIfBlock<CC_Z> ifb(a, astubs, &astubsRet);
-    EMIT_CALL1(astubs, undefCns, IMM((uintptr_t)name));
+    EMIT_CALL(astubs, undefCns, IMM((uintptr_t)name));
     recordReentrantStubCall(i);
     m_regMap.invalidate(i.outStack->location);
   }
@@ -5082,6 +5198,8 @@ TranslatorX64::analyzeDefCns(Tracelet& t,
   i.m_txFlags = supportedPlan(!g_vmContext->getCns(name, true, false));
 }
 
+typedef void (*defCnsHelper_func_t)(TargetCache::CacheHandle ch, Variant *inout,
+                                    StringData *name, size_t bit);
 template<bool setBit>
 static void defCnsHelper(TargetCache::CacheHandle ch, Variant *inout,
                          StringData *name, size_t bit) {
@@ -5102,14 +5220,12 @@ static void defCnsHelper(TargetCache::CacheHandle ch, Variant *inout,
     tv = (TypedValue*)&false_varNR;
   }
 
-  EXCEPTION_GATE_ENTER();
   if (tv->m_type != KindOfUninit) {
     raise_warning(Strings::CONSTANT_ALREADY_DEFINED, name->data());
   } else {
     ASSERT(!inout->isAllowedAsConstantValue());
     raise_warning(Strings::CONSTANTS_MUST_BE_SCALAR);
   }
-  EXCEPTION_GATE_LEAVE();
   *inout = false;
 }
 
@@ -5133,10 +5249,12 @@ TranslatorX64::translateDefCns(const Tracelet& t,
 
   m_regMap.cleanLoc(i.inputs[0]->location);
   if (RuntimeOption::RepoAuthoritative) {
-    EMIT_CALL3(a, defCnsHelper<false>, IMM(ch), A(i.inputs[0]->location),
+    EMIT_CALL(a, (defCnsHelper_func_t)defCnsHelper<false>,
+               IMM(ch), A(i.inputs[0]->location),
                IMM((uint64)name));
   } else {
-    EMIT_CALL4(a, defCnsHelper<true>, IMM(ch), A(i.inputs[0]->location),
+    EMIT_CALL(a, (defCnsHelper_func_t)defCnsHelper<true>,
+               IMM(ch), A(i.inputs[0]->location),
                IMM((uint64)name), IMM(allocCnsBit(name)));
   }
   recordReentrantCall(i);
@@ -5171,17 +5289,13 @@ TranslatorX64::translateClsCnsD(const Tracelet& t,
         TargetCache::lookupClassConstant(tv, namedEntityPair.second,
                                          namedEntityPair.first, cnsName);
     }
-    emitCallSaveRegs();
-    int arg = 0;
-    emitMovRegReg(astubs, *cns, argNumToRegName[arg++]);
-    emitImmReg(astubs, (uintptr_t)namedEntityPair.second,
-               argNumToRegName[arg++]);
-    emitImmReg(astubs, (uintptr_t)namedEntityPair.first,
-               argNumToRegName[arg++]);
-    emitImmReg(astubs, (uintptr_t)cnsName, argNumToRegName[arg++]);
-    emitCall(astubs, (TCA)TargetCache::lookupClassConstant);
+
+    EMIT_CALL(astubs, TCA(TargetCache::lookupClassConstant),
+              R(*cns),
+              IMM(uintptr_t(namedEntityPair.second)),
+              IMM(uintptr_t(namedEntityPair.first)),
+              IMM(uintptr_t(cnsName)));
     recordReentrantStubCall(i);
-    m_regMap.smashRegs(kCallerSaved);
     // DiamondGuard will restore cns's SCRATCH state but not its
     // contents. lookupClassConstant returns the value we want.
     emitMovRegReg(astubs, rax, *cns);
@@ -5204,7 +5318,6 @@ TranslatorX64::analyzeConcat(Tracelet& t, NormalizedInstruction& i) {
 void
 TranslatorX64::translateConcat(const Tracelet& t,
                                const NormalizedInstruction& i) {
-  m_regMap.allocOutputRegs(i);
   ASSERT(i.inputs.size() == 2);
   const DynLocation& r = *i.inputs[0];
   const DynLocation& l = *i.inputs[1];
@@ -5226,14 +5339,16 @@ TranslatorX64::translateConcat(const Tracelet& t,
       StringData* retval = concat_ss(v1, v2);
       printf("%p", retval); // use retval
     }
+
     // The concat helper will decRef the inputs and incRef the output
     // for us if appropriate
-    EMIT_CALL2(a, fptr,
+    EMIT_CALL(a, fptr,
                V(l.location),
                V(r.location));
     ASSERT(i.outStack->rtt.isString());
     m_regMap.bind(rax, i.outStack->location, i.outStack->outerType(),
                   RegInfo::DIRTY);
+
   } else {
     // Otherwise, use the generic concat helper
     if (false) { // type check
@@ -5244,7 +5359,7 @@ TranslatorX64::translateConcat(const Tracelet& t,
     }
     // concat will decRef the two inputs and incRef the output
     // for us if appropriate
-    EMIT_CALL4(a, concat,
+    EMIT_CALL(a, concat,
                IMM(l.valueType()), V(l.location),
                IMM(r.valueType()), V(r.location));
     ASSERT(i.outStack->isString());
@@ -5279,14 +5394,13 @@ TranslatorX64::translateAdd(const Tracelet& t,
   if (planInstrAdd_Array(i)) {
     // Handle adding two arrays
     ASSERT(i.outStack->outerType() == KindOfArray);
-    m_regMap.allocOutputRegs(i);
     if (false) { // type check
       ArrayData* v = NULL;
       v = array_add(v, v);
     }
     // The array_add helper will decRef the inputs and incRef the output
     // for us if appropriate
-    EMIT_CALL2(a, array_add,
+    EMIT_CALL(a, array_add,
                V(i.inputs[1]->location),
                V(i.inputs[0]->location));
     recordReentrantCall(i);
@@ -5403,9 +5517,7 @@ TranslatorX64::analyzeCastString(Tracelet& t, NormalizedInstruction& i) {
 }
 
 static void toStringError(StringData *cls) {
-  EXCEPTION_GATE_ENTER();
   raise_error("Method __toString() must return a string value");
-  EXCEPTION_GATE_LEAVE();
 }
 
 static const StringData* stringDataFromInt(int64 n) {
@@ -5425,37 +5537,26 @@ void TranslatorX64::toStringHelper(ObjectData *obj) {
   register ActRec *ar asm("r15");
   register ActRec *rbp asm("rbp");
 
+  const Class* cls = obj->getVMClass();
+  const Func* toString = cls->getToString();
+  if (!toString) {
+    // the unwinder will restore rVmSp to
+    // &ar->m_r, so we'd better make sure its
+    // got a valid TypedValue there.
+    TV_WRITE_UNINIT(&ar->m_r);
+    std::string msg = cls->preClass()->name()->data();
+    msg += "::__toString() was not defined";
+    throw BadTypeConversionException(msg.c_str());
+  }
   // ar->m_savedRbp set by caller
   ar->m_savedRip = rbp->m_savedRip;
-
-  if (LIKELY(obj->isInstance())) {
-    const Class* cls = obj->getVMClass();
-    const Func* toString = cls->getToString();
-    if (!toString) {
-      EXCEPTION_GATE_ENTER();
-      std::string msg = cls->preClass()->name()->data();
-      msg += "::__toString() was not defined";
-      throw BadTypeConversionException(msg.c_str());
-      EXCEPTION_GATE_LEAVE();
-    }
-    ar->m_func = toString;
-    // ar->m_soff set by caller
-    ar->initNumArgs(0);
-    ar->setThis(obj);
-    ar->setVarEnv(0);
-    // point our return address at the prolog to execute
-    rbp->m_savedRip = (uint64_t)toString->getPrologue(0);
-  } else {
-    EXCEPTION_GATE_ENTER();
-    TypedValue &tv = ar->m_r;
-    tvWriteUninit(&tv);
-    Variant &v = tvAsVariant(&tv);
-    v = obj->t___tostring();
-    EXCEPTION_GATE_LEAVE();
-    // point our return address at a helper that will clean
-    // up the stack
-    rbp->m_savedRip = (uint64_t)tx64->m_toStringReturnHelper;
-  }
+  ar->m_func = toString;
+  // ar->m_soff set by caller
+  ar->initNumArgs(0);
+  ar->setThis(obj);
+  ar->setVarEnv(0);
+  // point our return address at the prolog to execute
+  rbp->m_savedRip = (uint64_t)toString->getPrologue(0);
 }
 
 void
@@ -5478,11 +5579,11 @@ TranslatorX64::translateCastString(const Tracelet& t,
     a.   mov_imm64_reg((intptr_t)s_1, *scratch);
     a.   cmov_reg64_reg64(CC_NZ, *scratch, dest);
   } else if (i.inputs[0]->isInt()) {
-    EMIT_CALL1(a, stringDataFromInt, V(i.inputs[0]->location));
+    EMIT_CALL(a, stringDataFromInt, V(i.inputs[0]->location));
     m_regMap.bind(rax, i.outStack->location, i.outStack->outerType(),
                   RegInfo::DIRTY);
   } else if (i.inputs[0]->isDouble()) {
-    EMIT_CALL1(a, stringDataFromDouble, V(i.inputs[0]->location));
+    EMIT_CALL(a, stringDataFromDouble, V(i.inputs[0]->location));
     m_regMap.bind(rax, i.outStack->location, i.outStack->outerType(),
                   RegInfo::DIRTY);
   } else if (i.inputs[0]->isString()) {
@@ -5509,7 +5610,7 @@ TranslatorX64::translateCastString(const Tracelet& t,
     }
     m_regMap.smashRegs(kAllRegs);
     a.   mov_reg64_reg64(rVmSp, r15);
-    emitCall(a, (TCA)toStringHelper);
+    EMIT_CALL(a, TCA(toStringHelper));
     recordReentrantCall(i);
     if (i.stackOff != 0) {
       a. add_imm64_reg64(cellsToBytes(i.stackOff), rVmSp);
@@ -5521,7 +5622,7 @@ TranslatorX64::translateCastString(const Tracelet& t,
     emitStringCheck(a, base, disp + TVOFF(m_type), *scratch);
     {
       UnlikelyIfBlock<CC_NZ> ifNotString(a, astubs);
-      EMIT_CALL1(astubs, toStringError, IMM(0));
+      EMIT_CALL(astubs, toStringError, IMM(0));
       recordReentrantStubCall(i);
     }
   } else {
@@ -5552,9 +5653,9 @@ TranslatorX64::translatePrint(const Tracelet& t,
   Location  loc = inputs[0]->location;
   DataType type = inputs[0]->outerType();
   switch (type) {
-    STRINGCASE():       EMIT_CALL1(a, print_string,  V(loc)); break;
-    case KindOfInt64:   EMIT_CALL1(a, print_int,     V(loc)); break;
-    case KindOfBoolean: EMIT_CALL1(a, print_boolean, V(loc)); break;
+    STRINGCASE():       EMIT_CALL(a, print_string,  V(loc)); break;
+    case KindOfInt64:   EMIT_CALL(a, print_int,     V(loc)); break;
+    case KindOfBoolean: EMIT_CALL(a, print_boolean, V(loc)); break;
     NULLCASE():         /* do nothing */                   break;
     default: {
       // Translation is only supported for Null, Boolean, Int, and String
@@ -5588,12 +5689,16 @@ TranslatorX64::translateJmp(const Tracelet& t,
       if (!m_segvStubs.insert(SignalStubMap::value_type(surpriseLoad,
                                                         astubs.code.frontier)))
         NOT_REACHED();
+      /*
+       * Note that it is safe not to register unwind information here,
+       * because we just called syncOutputs so all registers are
+       * already clean.
+       */
       astubs.call((TCA)&EventHook::CheckSurprise);
       recordStubCall(i);
       astubs.jmp(a.code.frontier);
     } else {
-      emitLoadSurpriseFlags();
-      a.test_reg64_reg64(rScratch, rScratch);
+      emitTestSurpriseFlags();
       {
         UnlikelyIfBlock<CC_NZ> ifSurprise(a, astubs);
         astubs.call((TCA)&EventHook::CheckSurprise);
@@ -5606,29 +5711,187 @@ TranslatorX64::translateJmp(const Tracelet& t,
 }
 
 void
+TranslatorX64::analyzeSwitch(Tracelet& t,
+                             NormalizedInstruction& i) {
+  RuntimeType& rtt = i.inputs[0]->rtt;
+  ASSERT(rtt.outerType() != KindOfRef);
+  switch (rtt.outerType()) {
+    NULLCASE():
+    case KindOfBoolean:
+    case KindOfInt64:
+      i.m_txFlags = Native;
+      break;
+
+    case KindOfDouble:
+      i.m_txFlags = Simple;
+      break;
+
+    STRINGCASE():
+    case KindOfObject:
+    case KindOfArray:
+      i.m_txFlags = Supported;
+      break;
+
+    default:
+      not_reached();
+  }
+}
+
+template <typename T>
+static int64 switchBoundsCheck(T v, int64 base, int64 nTargets) {
+  // I'm relying on gcc to be smart enough to optimize away the next
+  // two lines when T is int64.
+  if (int64(v) == v) {
+    int64 ival = v;
+    if (ival >= base && ival < (base + nTargets)) {
+      return ival - base;
+    }
+  }
+  return nTargets + 1;
+}
+
+static int64 switchDoubleHelper(int64 val, int64 base, int64 nTargets) {
+  union {
+    int64 intbits;
+    double dblval;
+  } u;
+  u.intbits = val;
+  return switchBoundsCheck(u.dblval, base, nTargets);
+}
+
+static int64 switchStringHelper(StringData* s, int64 base, int64 nTargets) {
+  int64 ival;
+  double dval;
+  switch (s->isNumericWithVal(ival, dval, 1)) {
+    case KindOfNull:
+      ival = switchBoundsCheck(0, base, nTargets);
+      break;
+
+    case KindOfDouble:
+      ival = switchBoundsCheck(dval, base, nTargets);
+      break;
+
+    case KindOfInt64:
+      ival = switchBoundsCheck(ival, base, nTargets);
+      break;
+
+    default:
+      not_reached();
+  }
+  if (s->decRefCount() == 0) {
+    s->release();
+  }
+  return ival;
+}
+
+static int64 switchObjHelper(ObjectData* o, int64 base, int64 nTargets) {
+  int64 ival = o->o_toInt64();
+  if (o->decRefCount() == 0) {
+    o->release();
+  }
+  return switchBoundsCheck(ival, base, nTargets);
+}
+
+void
 TranslatorX64::translateSwitch(const Tracelet& t,
                                const NormalizedInstruction& i) {
-  PhysReg labelReg = getReg(i.inputs[0]->location);
-  syncOutputs(t); // this will mark labelReg as FREE but it still has
+  int64 base = i.imm[1].u_I64A;
+  bool bounded = i.imm[2].u_IVA;
+  const ImmVector& iv = i.immVec;
+  int nTargets = bounded ? iv.size() - 2 : iv.size();
+  int jmptabSize = nTargets;
+  ASSERT(nTargets > 0);
+  PhysReg valReg = getReg(i.inputs[0]->location);
+  DataType inType = i.inputs[0]->outerType();
+  ASSERT(IMPLIES(inType != KindOfInt64, bounded));
+  ASSERT(IMPLIES(bounded, iv.size() > 2));
+  syncOutputs(t); // this will mark valReg as FREE but it still has
                   // its old value
 
-  uint32_t* offsetAddr = (uint32_t*)(a.code.frontier + 3);
-  a.lea_rip_disp_reg64(0x1badd00d, rScratch);
-  TCA afterLea = a.code.frontier;
+  SrcKey defaultSk(curFunc(), i.offset() + iv.vec32()[iv.size() - 1]);
+  SrcKey zeroSk(curFunc(), 0);
+  if (0 >= base && 0 < (base + nTargets)) {
+    zeroSk.m_offset = i.offset() + iv.vec32()[0 - base];
+  } else {
+    zeroSk.m_offset = defaultSk.m_offset;
+  }
 
-  a.jmp_reg64_index_displ(rScratch, labelReg, 0);
-  translator_not_reached(a);
-  moveToAlign(a, 8);
+  switch (i.inputs[0]->outerType()) {
+    NULLCASE(): {
+      emitBindJmp(zeroSk);
+      return;
+    }
 
-  ASSERT(*offsetAddr == 0x1badd00d);
-  *offsetAddr = a.code.frontier - afterLea;
-  const ImmVector& iv = i.immVec;
-  for (int idx = 0; idx < iv.size(); ++idx) {
-    ASSERT(isSmashable(a, sizeof(TCA)));
+    case KindOfBoolean: {
+      SrcKey nonzeroSk(curFunc(), i.offset() + iv.vec32()[iv.size() - 2]);
+      a.test_reg64_reg64(valReg, valReg);
+      emitCondJmp(nonzeroSk, zeroSk, CC_NZ);
+      return;
+    }
+
+    case KindOfInt64:
+      // No special treatment needed
+      break;
+
+    case KindOfDouble:
+    STRINGCASE():
+    case KindOfObject: {
+      // switch(Double|String|Obj)Helper do bounds-checking for us, so
+      // we need to make sure the default case is in the jump table,
+      // and don't emit our own bounds-checking code
+      jmptabSize = iv.size();
+      bounded = false;
+      if (false) {
+        StringData* s = NULL;
+        ObjectData* o = NULL;
+        switchDoubleHelper(0.0, 0, 0);
+        switchStringHelper(s, 0, 0);
+        switchObjHelper(o, 0, 0);
+      }
+      EMIT_CALL(a,
+                 inType == KindOfDouble ? (TCA)switchDoubleHelper :
+                 (IS_STRING_TYPE(inType) ? (TCA)switchStringHelper :
+                  (TCA)switchObjHelper),
+                 R(valReg), IMM(base), IMM(nTargets));
+      recordCall(i);
+      valReg = rax;
+      break;
+    }
+
+    case KindOfArray:
+      emitDecRef(a, i, valReg, KindOfArray);
+      emitBindJmp(defaultSk);
+      return;
+
+    default:
+      not_reached();
+  }
+
+  if (bounded) {
+    if (base) {
+      a.sub_imm64_reg64(base, valReg);
+    }
+    a.cmp_imm64_reg64(nTargets, valReg);
+    prepareForSmash(a, kJmpccLen);
+    TCA defaultStub =
+      emitServiceReq(REQ_BIND_JMPCC_SECOND, 3,
+                     a.code.frontier, defaultSk.m_offset, CC_AE);
+    // Unsigned comparison: check for < 0 and >= nTargets at the same time
+    a.jae(defaultStub);
+  }
+
+  TCA* jmptab = m_globalData.alloc<TCA>(sizeof(TCA), jmptabSize);
+  TCA afterLea = a.code.frontier + kLeaRipLen;
+  ptrdiff_t diff = (TCA)jmptab - afterLea;
+  ASSERT(deltaFits(diff, sz::dword));
+  a.lea_rip_disp_reg64(diff, rScratch);
+  ASSERT(a.code.frontier == afterLea);
+  a.jmp_reg64_index_displ(rScratch, valReg, 0);
+
+  for (int idx = 0; idx < jmptabSize; ++idx) {
     SrcKey sk(curFunc(), i.offset() + iv.vec32()[idx]);
-    TCA sr = emitServiceReq(REQ_BIND_ADDR, 2ull,
-                            a.code.frontier, uint64_t(sk.offset()));
-    a.qword((uintptr_t)sr);
+    jmptab[idx] = emitServiceReq(false, REQ_BIND_ADDR, 2ull,
+                                 &jmptab[idx], uint64_t(sk.offset()));
   }
 }
 
@@ -5680,25 +5943,110 @@ TranslatorX64::translateRetC(const Tracelet& t,
    *   unconditionally transfer control back to the caller
    */
 
-  syncOutputs(t);
+  int adjust = t.m_stackChange;
+  if (i.skipSync) {
+    /*
+     * getting here means there was nothing to do between
+     * a previous reqXXX and this ret. Any spill code we generate
+     * here would be broken (because the rbx is wrong), so
+     * verify that we dont generate anything...
+     */
+    TCA s DEBUG_ONLY = a.code.frontier;
+    syncOutputs(0);
+    ASSERT(s == a.code.frontier);
+    adjust = 0;
+  } else {
+    /*
+     * no need to syncOutputs here... we're going to update
+     * rbx at the end of this function anyway, and we may want
+     * to use enregistered locals on the fast path below
+     */
+    m_regMap.scrubStackEntries(t.m_stackChange);
+    m_regMap.cleanAll();
+  }
 
   bool noThis = !curFunc()->isPseudoMain() &&
                 (!curFunc()->isMethod() || curFunc()->isStatic());
   bool mayUseVV = (curFunc()->attrs() & AttrMayUseVV);
-  bool freeLocalsInline = (curFunc()->numLocals() <= Translator::kFewLocals);
 
-  TCA varEnvCheck = NULL;
+  TypedValue tv;
+  TV_WRITE_UNINIT(&tv);
+  tv.m_data.num = 0; // to keep the compiler happy
+  if (i.grouped) {
+    /*
+     * We suppressed the write of the (literal) return value
+     * to the stack. Figure out what it was.
+     */
+    NormalizedInstruction* prev = i.prev;
+    ASSERT(!prev->outStack);
+    switch (prev->op()) {
+      case OpNull:
+        tv.m_type = KindOfNull;
+        break;
+      case OpTrue:
+      case OpFalse:
+        tv.m_type = KindOfBoolean;
+        tv.m_data.num = prev->op() == OpTrue;
+        break;
+      case OpInt:
+        tv.m_type = KindOfInt64;
+        tv.m_data.num = prev->imm[0].u_I64A;
+        break;
+      case OpDouble:
+        tv.m_type = KindOfDouble;
+        tv.m_data.dbl = prev->imm[0].u_DA;
+        break;
+      case OpString:
+        tv.m_type = BitwiseKindOfString;
+        tv.m_data.pstr = curUnit()->lookupLitstrId(prev->imm[0].u_SA);
+        break;
+      case OpArray:
+        tv.m_type = KindOfArray;
+        tv.m_data.parr = curUnit()->lookupArrayId(prev->imm[0].u_AA);
+        break;
+      default:
+        assert(false);
+    }
+  }
+  /*
+   * figure out where to put the return value, and where to get it from
+   */
+  const Func *callee = curFunc();
+  ASSERT(callee);
+  int nLocalCells =
+    callee == NULL ? 0 : // This happens for returns from pseudo-main.
+    callee->numSlotsInFrame();
+  int retvalSrcBase  = cellsToBytes(-adjust); // 0(rVmSp) is retval
 
-  if (freeLocalsInline) {
+  /*
+   * The (1 + nLocalCells) skips 1 slot for the return value.
+   */
+  TRACE(2, "nLocalCells: %d\n", nLocalCells);
+  int retvalDestDisp =
+    cellsToBytes(1 + nLocalCells - adjust) + AROFF(m_r);
+
+  if (freeLocalsInline()) {
     // Emit specialized code inline to clean up the locals
     ASSERT(curFunc()->numLocals() == (int)i.inputs.size());
 
+    boost::scoped_ptr<DiamondReturn> dr;
     if (mayUseVV) {
+      dr.reset(new DiamondReturn);
       ScratchReg scratch(m_regMap);
       a. load_reg64_disp_reg64(rVmFp, AROFF(m_varEnv), *scratch);
       a. test_reg64_reg64(*scratch, *scratch);
-      varEnvCheck = a.code.frontier;
-      a. jnz(0); // 2f
+      {
+        UnlikelyIfBlock<CC_NZ> varEnvCheck(a, astubs, dr.get());
+        if (i.grouped) {
+          emitStoreImm(astubs, tv.m_type,
+                       rVmSp, retvalSrcBase + TVOFF(m_type), sz::dword);
+          if (tv.m_type != KindOfNull) {
+            emitStoreImm(astubs, tv.m_data.num,
+                         rVmSp, retvalSrcBase, sz::qword);
+          }
+        }
+        emitFrameRelease(astubs, i, noThis);
+      }
     }
 
     for (unsigned int k = 0; k < i.inputs.size(); ++k) {
@@ -5724,42 +6072,57 @@ TranslatorX64::translateRetC(const Tracelet& t,
       // m_this and m_cls share a slot in the ActRec, so we check the
       // lowest bit (0 -> m_this, 1 -> m_cls)
       a.      load_reg64_disp_reg64(rVmFp, AROFF(m_this), rdi);
-      a.      test_imm32_reg64(1, rdi);
-      {
-        JccBlock<CC_NZ> ifZero(a);
-        emitDecRef(i, rdi, KindOfObject); // this. decref it.
+      if (i.guardedThis) {
+        emitDecRef(i, rdi, KindOfObject);
+      } else {
+        a.      test_imm32_reg64(1, rdi);
+        {
+          JccBlock<CC_NZ> ifZero(a);
+          emitDecRef(i, rdi, KindOfObject); // this. decref it.
+        }
       }
     } else if (curFunc()->isPseudoMain()) {
       a.      load_reg64_disp_reg64(rVmFp, AROFF(m_this), rdi);
-      a.      test_reg64_reg64(rdi, rdi);
+      a.      shr_imm32_reg64(1, rdi); // sets c (from bit 0) and z
       {
-        JccBlock<CC_Z> ifNotZero(a);
-        a.    test_imm32_reg64(1, rdi);
-        {
-          JccBlock<CC_NZ> ifZero(a);
-          emitDecRef(i, rdi, KindOfObject);
-        }
+        // tests for Not Zero and Not Carry
+        UnlikelyIfBlock<CC_NBE> ifRealThis(a, astubs);
+        astubs.    shl_imm32_reg64(1, rdi);
+        emitDecRef(astubs, i, rdi, KindOfObject);
       }
     }
 
-    emitLoadSurpriseFlags();
-    a.test_reg64_reg64(rScratch, rScratch);
+    m_regMap.smashRegs(kAllRegs);
+    emitTestSurpriseFlags();
     {
       UnlikelyIfBlock<CC_NZ> ifTracer(a, astubs);
+      if (i.grouped) {
+        emitStoreImm(astubs, tv.m_type,
+                     rVmSp, retvalSrcBase + TVOFF(m_type), sz::dword);
+        if (tv.m_type != KindOfNull) {
+          emitStoreImm(astubs, tv.m_data.num,
+                       rVmSp, retvalSrcBase, sz::qword);
+        }
+      }
       astubs.mov_reg64_reg64(rVmFp, argNumToRegName[0]);
-      astubs.call((TCA)&EventHook::FunctionExit);
+      emitCall(astubs, (TCA)&EventHook::FunctionExit, true);
       recordReentrantStubCall(i);
-      m_regMap.smashRegs(kCallerSaved);
     }
   } else {
+    if (i.grouped) {
+      /*
+       * what a pain: EventHook::onFunctionExit needs access
+       * to the return value - so we'd better not have suppressed
+       * writing it to the stack...
+       */
+      not_reached();
+    }
+    m_regMap.smashRegs(kAllRegs);
     // If we are doing the generic return flow, we emit a call to
     // frame_free_locals here
     ASSERT(i.inputs.size() == 0);
     emitFrameRelease(a, i, noThis);
   }
-
-  // 1:
-  TCA localsFreed = a.code.frontier;
 
   const PhysReg rRetAddr = rax;
   a.   load_reg64_disp_reg64(rVmFp, AROFF(m_savedRip), rRetAddr);
@@ -5771,49 +6134,31 @@ TranslatorX64::translateRetC(const Tracelet& t,
    * care about reference counts: as long as this runs to completion, we're
    * refcount-neutral.
    */
-  const Func *callee = ((ActRec *)vmfp())->m_func;
-  ASSERT(callee);
-  int nLocalCells =
-    callee == NULL ? 0 : // This happens for returns from pseudo-main.
-    callee->numSlotsInFrame();
-  int retvalSrcBase  = cellsToBytes(0); // 0(rVmSp) is retval
-
-  /*
-   * The (1 + nLocalCells) skips 1 slot for the return value.
-   */
-  TRACE(2, "nLocalCells: %d\n", nLocalCells);
-  int retvalDestDisp = cellsToBytes(1 + nLocalCells) + AROFF(m_r);
-
-  /*
-   * Splat the return value on top of the activation record. We've already
-   * read all the fields from it we'll need.
-   */
-  ASSERT(sizeof(Cell) == 16);
-  a.   load_reg64_disp_reg64 (rVmSp,    retvalSrcBase,      rScratch);
-  a.   store_reg64_disp_reg64(rScratch, retvalDestDisp,     rVmSp);
-  a.   load_reg64_disp_reg64 (rVmSp,    retvalSrcBase + 8,  rScratch);
-  a.   store_reg64_disp_reg64(rScratch, retvalDestDisp + 8, rVmSp);
+  if (i.grouped) {
+    emitStoreImm(a, tv.m_type,
+                 rVmSp, retvalDestDisp + TVOFF(m_type), sz::dword);
+    if (tv.m_type != KindOfNull) {
+      emitStoreImm(a, tv.m_data.num,
+                   rVmSp, retvalDestDisp, sz::qword);
+    }
+  } else {
+    ASSERT(sizeof(Cell) == 16);
+    a.   load_reg64_disp_reg64 (rVmSp,    retvalSrcBase,      rScratch);
+    a.   store_reg64_disp_reg64(rScratch, retvalDestDisp,     rVmSp);
+    a.   load_reg64_disp_reg64 (rVmSp,    retvalSrcBase + 8,  rScratch);
+    a.   store_reg64_disp_reg64(rScratch, retvalDestDisp + 8, rVmSp);
+  }
   /*
    * Now update the principle hardware registers.
    *
    * Stack pointer has to skip over all the locals as well as the
    * activation record.
    */
-  a.   add_imm64_reg64(sizeof(ActRec) + cellsToBytes(nLocalCells), rVmSp);
+  a.   add_imm64_reg64(sizeof(ActRec) +
+                       cellsToBytes(nLocalCells - adjust), rVmSp);
   emitRB(a, RBTypeFuncExit, curFunc()->fullName()->data(), RegSet(rRetAddr));
   a.   jmp_reg        (rRetAddr);
   translator_not_reached(a);
-
-  if (freeLocalsInline && mayUseVV) {
-    // If we are doing the specialized return flow, we emit the call
-    // to frame_free_locals down here instead to make the case where
-    // m_varenv/m_extraArgs is NULL faster.
-    ASSERT(varEnvCheck);
-    // 2:
-    a.patchJcc(varEnvCheck, astubs.code.frontier);
-    emitFrameRelease(astubs, i, noThis);
-    astubs. jmp(localsFreed); // 1b
-  }
 }
 
 void
@@ -5884,7 +6229,8 @@ TranslatorX64::translateNativeImpl(const Tracelet& t,
   emitNativeImpl(curFunc(), true);
 }
 
-// Warning: smashes rsi and rdi. Usually ok between functions.
+// Warning: smashes rsi and rdi, and can't handle unclean registers.
+// Used between functions.
 void
 TranslatorX64::emitFrameRelease(X64Assembler& a,
                                 const NormalizedInstruction& i,
@@ -5933,7 +6279,8 @@ TranslatorX64::emitStringToKnownClass(const NormalizedInstruction& i,
     }
     // We're only passing two arguments to lookupKnownClass because
     // the third is ignored in the checkOnly == false case
-    EMIT_CALL2(astubs, TargetCache::lookupKnownClass<false>,
+    EMIT_CALL(astubs, ((TargetCache::lookupKnownClass_func_t)
+                         TargetCache::lookupKnownClass<false>),
                R(*clsPtr), IMM((uintptr_t)clsName));
     recordReentrantStubCall(i);
     // UnlikelyIfBlock will restore cls's SCRATCH state but not its
@@ -5958,11 +6305,11 @@ TranslatorX64::emitStringToClass(const NormalizedInstruction& i) {
     }
     TRACE(1, "ClassCache @ %d\n", int(ch));
     if (i.inputs[kEmitClsLocalIdx]->rtt.isVariant()) {
-        EMIT_CALL2(a, ClassCache::lookup,
+        EMIT_CALL(a, ClassCache::lookup,
                    IMM(ch),
                    DEREF(in));
     } else {
-        EMIT_CALL2(a, ClassCache::lookup,
+        EMIT_CALL(a, ClassCache::lookup,
                    IMM(ch),
                    V(in));
     }
@@ -6139,7 +6486,7 @@ void TranslatorX64::emitCallFillCont(X64Assembler& a,
     cont =
       VMExecutionContext::fillContinuationVars(fp, orig, gen, cont);
   }
-  EMIT_CALL4(a,
+  EMIT_CALL(a,
              VMExecutionContext::fillContinuationVars,
              R(rVmFp),
              IMM((intptr_t)orig),
@@ -6157,17 +6504,17 @@ void TranslatorX64::translateCreateCont(const Tracelet& t,
   ASSERT(genClass);
   const Func* genFunc = origFunc->getGeneratorBody(genName);
 
-  // Always starting this instruction off with a call to C++ isn't
-  // really that bad: it's always the first instruction in its
-  // function's body (and the only instruction other than RetC), so
-  // there will be nothing live to spill to the stack.
   if (false) {
     ActRec* fp = NULL;
     UNUSED c_GenericContinuation* cont =
       VMExecutionContext::createContinuation(fp, getArgs, origFunc, genClass,
                                              genFunc);
   }
-  EMIT_CALL5(a,
+
+  // Even callee-saved regs need to be clean, because
+  // createContinuation will read all locals.
+  m_regMap.cleanAll();
+  EMIT_CALL(a,
              VMExecutionContext::createContinuation,
              R(rVmFp),
              IMM(getArgs),
@@ -6201,9 +6548,9 @@ void TranslatorX64::translateCreateCont(const Tracelet& t,
       (origFunc->lookupVarId(thisStr) == kInvalidId);
     ScratchReg rDest(m_regMap);
     if (origLocals > 0 || fillThis) {
-      a.load_reg64_disp_reg64(rax,
-                              offsetof(c_GenericContinuation, m_locals),
-                              *rDest);
+      a.lea_reg64_disp_reg64(rax,
+                             c_GenericContinuation::localsOffset(),
+                             *rDest);
     }
     for (int i = 0; i < origLocals; ++i) {
       ASSERT(mapContains(params, i));
@@ -6229,13 +6576,12 @@ void TranslatorX64::translateCreateCont(const Tracelet& t,
         a.store_imm32_disp_reg(KindOfObject, thisOff + TVOFF(m_type), *rDest);
       }
     }
-
-    m_regMap.freeScratchReg(rax);
   } else {
     Stats::emitInc(a, Stats::Tx64_ContCreateSlow);
     emitCallFillCont(a, origFunc, genFunc);
   }
-  m_regMap.bind(rax, i.outStack->location, KindOfObject, RegInfo::DIRTY);
+  m_regMap.bindScratch(holdRax, i.outStack->location, KindOfObject,
+                       RegInfo::DIRTY);
 }
 
 void TranslatorX64::emitCallUnpack(X64Assembler& a,
@@ -6248,7 +6594,7 @@ void TranslatorX64::emitCallUnpack(X64Assembler& a,
     TypedValue* dest = NULL;
     VMExecutionContext::unpackContinuation(cont, dest);
   }
-  EMIT_CALL2(a,
+  EMIT_CALL(a,
              VMExecutionContext::unpackContinuation,
              V(i.inputs[contIdx]->location),
              A(Location(Location::Local, nCopy)));
@@ -6299,9 +6645,9 @@ void TranslatorX64::translateUnpackCont(const Tracelet& t,
     ScratchReg rSrc(m_regMap);
     ScratchReg rZero(m_regMap);
     if (nCopy > 0) {
-      a.  load_reg64_disp_reg64(rCont,
-                                offsetof(c_GenericContinuation, m_locals),
-                                *rSrc);
+      a.  lea_reg64_disp_reg64(rCont,
+                               c_GenericContinuation::localsOffset(),
+                               *rSrc);
       a.  xor_reg32_reg32(*rZero, *rZero);
     }
     for (int srcOff = 0, destOff = localOffset(nCopy);
@@ -6333,7 +6679,7 @@ void TranslatorX64::emitCallPack(X64Assembler& a,
     int label = 0;
     VMExecutionContext::packContinuation(cont, fp, tv, label);
   }
-  EMIT_CALL4(a,
+  EMIT_CALL(a,
              VMExecutionContext::packContinuation,
              V(i.inputs[contIdx]->location),
              R(rVmFp),
@@ -6374,9 +6720,9 @@ void TranslatorX64::translatePackCont(const Tracelet& t,
   ScratchReg rDest(m_regMap);
   ScratchReg rZero(m_regMap);
   if (nCopy > 0) {
-    a.  load_reg64_disp_reg64(rCont,
-                              offsetof(c_GenericContinuation, m_locals),
-                              *rDest);
+    a.  lea_reg64_disp_reg64(rCont,
+                             c_GenericContinuation::localsOffset(),
+                             *rDest);
     a.  xor_reg32_reg32(*rZero, *rZero);
   }
   for (int idx = nCopy, destOff = 0, srcOff = localOffset(nCopy);
@@ -6406,10 +6752,8 @@ void TranslatorX64::translatePackCont(const Tracelet& t,
 }
 
 static void continuationRaiseHelper(c_GenericContinuation* cont) {
-  EXCEPTION_GATE_ENTER();
   cont->t_raised();
   not_reached();
-  EXCEPTION_GATE_LEAVE();
 }
 
 void TranslatorX64::emitContRaiseCheck(X64Assembler& a,
@@ -6426,7 +6770,7 @@ void TranslatorX64::emitContRaiseCheck(X64Assembler& a,
       c_GenericContinuation* c = NULL;
       continuationRaiseHelper(c);
     }
-    EMIT_CALL1(astubs,
+    EMIT_CALL(astubs,
                continuationRaiseHelper,
                R(rCont));
     recordReentrantStubCall(i);
@@ -6460,10 +6804,8 @@ void TranslatorX64::translateContDone(const Tracelet& t,
 }
 
 static void contPreNextThrowHelper(c_GenericContinuation* c) {
-  EXCEPTION_GATE_ENTER();
   c->preNext();
   not_reached();
-  EXCEPTION_GATE_LEAVE();
 }
 
 void TranslatorX64::emitContPreNext(const NormalizedInstruction& i,
@@ -6474,7 +6816,7 @@ void TranslatorX64::emitContPreNext(const NormalizedInstruction& i,
   a.    test_imm32_disp_reg32(0x0101, doneOffset, *rCont);
   {
     UnlikelyIfBlock<CC_NZ> ifThrow(a, astubs);
-    EMIT_CALL1(astubs, contPreNextThrowHelper, R(*rCont));
+    EMIT_CALL(astubs, contPreNextThrowHelper, R(*rCont));
     recordReentrantStubCall(i);
     translator_not_reached(astubs);
   }
@@ -6507,10 +6849,8 @@ void TranslatorX64::translateContNext(const Tracelet& t,
 }
 
 static void contNextCheckThrowHelper(c_GenericContinuation* cont) {
-  EXCEPTION_GATE_ENTER();
   cont->nextCheck();
   not_reached();
-  EXCEPTION_GATE_LEAVE();
 }
 
 void TranslatorX64::emitContNextCheck(const NormalizedInstruction& i,
@@ -6520,7 +6860,7 @@ void TranslatorX64::emitContNextCheck(const NormalizedInstruction& i,
                              *rCont);
   {
     UnlikelyIfBlock<CC_L> whoops(a, astubs);
-    EMIT_CALL1(astubs, contNextCheckThrowHelper, *rCont);
+    EMIT_CALL(astubs, contNextCheckThrowHelper, *rCont);
     recordReentrantStubCall(i);
     translator_not_reached(astubs);
   }
@@ -6632,12 +6972,12 @@ void TranslatorX64::analyzeTraitExists(Tracelet& t,
 
 static int64 classExistsSlow(const StringData* name, bool autoload,
                              Attr typeAttr) {
-  EXCEPTION_GATE_ENTER();
   bool ret = Unit::classExists(name, autoload, typeAttr);
+  // XXX: do we need to decref this during an exception?
   if (name->decRefCount() == 0) {
     const_cast<StringData*>(name)->release();
   }
-  EXCEPTION_GATE_RETURN(ret);
+  return ret;
 }
 
 void TranslatorX64::translateClassExistsImpl(const Tracelet& t,
@@ -6673,7 +7013,7 @@ void TranslatorX64::translateClassExistsImpl(const Tracelet& t,
         // return the Class's flags. Otherwise, it will return a set
         // of flags such that our flag check at the join point below
         // will fail.
-        EMIT_CALL3(astubs, lookupKnownClass<true>,
+        EMIT_CALL(astubs, (lookupKnownClass_func_t)lookupKnownClass<true>,
                    RPLUS(rVmTl, ch),
                    IMM((uintptr_t)name),
                    IMM(isClass));
@@ -6715,7 +7055,7 @@ void TranslatorX64::translateClassExistsImpl(const Tracelet& t,
       UNUSED bool ret = false;
       ret = classExistsSlow(name, ret, typeAttr);
     }
-    EMIT_CALL3(a, classExistsSlow,
+    EMIT_CALL(a, classExistsSlow,
                V(i.inputs[nameIdx]->location),
                V(i.inputs[autoIdx]->location),
                IMM(typeAttr));
@@ -6784,7 +7124,7 @@ void TranslatorX64::emitStaticPropInlineLookup(const NormalizedInstruction& i,
       SPropCache::lookup(ch, cls, data);
     }
 
-    EMIT_CALL3(astubs, (TCA)SPropCache::lookup,
+    EMIT_CALL(astubs, (TCA)SPropCache::lookup,
                IMM(ch), V(clsInput.location), IMM(uint64_t(propName)));
     recordReentrantStubCall(i);
     emitMovRegReg(astubs, rax, scr);
@@ -6828,7 +7168,6 @@ void TranslatorX64::analyzeSetS(Tracelet& t, NormalizedInstruction& i) {
 
 void TranslatorX64::translateSetS(const Tracelet& t,
                                   const NormalizedInstruction& i) {
-  m_regMap.allocOutputRegs(i);
   ScratchReg sprop(m_regMap);
   const RuntimeType& rhsType = i.inputs[0]->rtt;
   emitStaticPropInlineLookup(i, *i.inputs[1], *i.inputs[2], *sprop);
@@ -6836,6 +7175,7 @@ void TranslatorX64::translateSetS(const Tracelet& t,
   ASSERT(m_regMap.getInfo(*sprop)->m_state == RegInfo::SCRATCH);
   ASSERT(!rhsType.isVariant());
 
+  m_regMap.allocOutputRegs(i);
   PhysReg rhsReg = getReg(i.inputs[0]->location);
   PhysReg outReg = getReg(i.outStack->location);
   emitTvSet(i, rhsReg, rhsType.outerType(), *sprop);
@@ -6849,6 +7189,7 @@ void TranslatorX64::analyzeSetG(Tracelet& t, NormalizedInstruction& i) {
     i.inputs[1]->isString() &&
     !i.inputs[0]->isVariant()
   );
+  if (i.m_txFlags) i.manuallyAllocInputs = true;
 }
 
 void TranslatorX64::translateSetG(const Tracelet& t,
@@ -6884,7 +7225,7 @@ isNormalPropertyAccess(const NormalizedInstruction& i,
   return
     i.immVecM.size() == 1 &&
     (lcode == LC || lcode == LL || lcode == LR) &&
-    (i.immVecM[0] == MPC || i.immVecM[0] == MPL) &&
+    mcodeMaybePropName(i.immVecM[0]) &&
     i.inputs[propInput]->isString() &&
     i.inputs[objInput]->valueType() == KindOfObject;
 }
@@ -6944,9 +7285,9 @@ getPropertyOffset(const NormalizedInstruction& i,
 static bool
 isSupportedCGetMProp(const NormalizedInstruction& i) {
   if (i.inputs.size() != 2) return false;
-  SKTRACE(2, i.source, "CGetM prop candidate: MPC-ness %d, "
+  SKTRACE(2, i.source, "CGetM prop candidate: prop supported: %d, "
                        "in[0] %s in[1] %s\n",
-          i.immVecM[0] == MPC || i.immVecM[0] == MPL,
+          mcodeMaybePropName(i.immVecM[0]),
           i.inputs[0]->rtt.pretty().c_str(),
           i.inputs[1]->rtt.pretty().c_str());
   return isNormalPropertyAccess(i, 1, 0) && !curFunc()->isPseudoMain();
@@ -6961,7 +7302,7 @@ isSupportedCGetM_LE(const NormalizedInstruction& i) {
   return
     i.immVec.locationCode() == LL &&
     i.immVecM.size() == 1 &&
-    (i.immVecM[0] == MEC || i.immVecM[0] == MEL) &&
+    mcodeMaybeArrayKey(i.immVecM[0]) &&
     i.inputs[0]->valueType() == KindOfArray && // base
     (i.inputs[1]->isInt() || i.inputs[1]->isString()); // key
 }
@@ -6976,8 +7317,8 @@ isSupportedCGetM_LEE(const NormalizedInstruction& i) {
   return
     i.immVec.locationCode() == LL &&
     i.immVecM.size() == 2 &&
-    (i.immVecM[0] == MEC || i.immVecM[0] == MEL) &&
-    (i.immVecM[1] == MEC || i.immVecM[1] == MEL) &&
+    mcodeMaybeArrayIntKey(i.immVecM[0]) &&
+    mcodeMaybeArrayStringKey(i.immVecM[1]) &&
     i.inputs[0]->valueType() == KindOfArray &&
     i.inputs[1]->isInt() && // first key
     i.inputs[2]->isString(); // second key
@@ -6989,7 +7330,7 @@ isSupportedCGetM_RE(const NormalizedInstruction& i) {
   return
     i.immVec.locationCode() == LR &&
     i.immVecM.size() == 1 &&
-    (i.immVecM[0] == MEC || i.immVecM[0] == MEL) &&
+    mcodeMaybeArrayKey(i.immVecM[0]) &&
     i.inputs[0]->valueType() == KindOfArray && // base
     (i.inputs[1]->isInt() || i.inputs[1]->isString()); // key;
 }
@@ -7001,7 +7342,7 @@ isSupportedCGetM_GE(const NormalizedInstruction& i) {
   return
     (lcode == LGC || lcode == LGL) &&
     i.immVecM.size() == 1 &&
-    (i.immVecM[0] == MEC || i.immVecM[0] == MEL) &&
+    mcodeMaybeArrayKey(i.immVecM[0]) &&
     i.inputs[0]->isString() && // name input
     (i.inputs[1]->isInt() || i.inputs[1]->isString()); // key input
 }
@@ -7016,6 +7357,7 @@ isSupportedCGetM(const NormalizedInstruction& i) {
 void
 TranslatorX64::analyzeCGetM(Tracelet& t, NormalizedInstruction& i) {
   i.m_txFlags = supportedPlan(isSupportedCGetM(i));
+  if (i.m_txFlags) i.manuallyAllocInputs = true;
 }
 
 static const char* getContextName() {
@@ -7051,23 +7393,14 @@ TranslatorX64::emitPropGet(const NormalizedInstruction& i,
 
   if (!base.isLocal()) {
     // Release the base
-    PhysReg baseTmp = baseReg;
-    if (base.isVariant()) {
-      // Should only be possible for CGetM <LR ..>
-      ASSERT(i.immVec.locationCode() == LR);
-      emitDeref(a, baseReg, *scratch);
-      baseTmp = *scratch;
-    }
-    emitDecRef(i, baseTmp, KindOfObject);
+    emitDecRef(i, baseReg, base.outerType());
   }
 }
 
 static void
 raiseUndefProp(ObjectData* base, const StringData* name) {
-  EXCEPTION_GATE_ENTER();
   VMRegAnchor _;
   static_cast<Instance*>(base)->raiseUndefProp(name);
-  EXCEPTION_GATE_LEAVE();
 }
 
 void
@@ -7085,6 +7418,7 @@ TranslatorX64::translateCGetMProp(const Tracelet& t,
   const Slot propOffset   = getPropertyOffset(i, 1, 0);
 
   if (propOffset != kInvalidSlot && i.immVec.locationCode() == LC) {
+    m_regMap.allocInputReg(i, 0);
     ASSERT(!base.isLocal() && !base.isVariant());
     Stats::emitInc(a, Stats::Tx64_PropGetFast);
     ScratchReg fieldAddr(m_regMap);
@@ -7093,26 +7427,30 @@ TranslatorX64::translateCGetMProp(const Tracelet& t,
     a.cmp_imm32_disp_reg32(KindOfUninit, TVOFF(m_type), *fieldAddr);
     {
       UnlikelyIfBlock<CC_Z> ifUninit(a, astubs);
-      EMIT_CALL2(astubs, raiseUndefProp, V(baseLoc), V(propLoc));
+      EMIT_CALL(astubs, raiseUndefProp,
+                V(baseLoc), IMM((uint64_t)prop.rtt.valueString()));
       recordReentrantStubCall(i);
       emitImmReg(astubs, (intptr_t)&init_null_variant, *fieldAddr);
     }
-    m_regMap.allocOutputRegs(i);
     emitPropGet(i, base, *fieldAddr, outLoc);
   } else {
+    int args[2];
+    args[0] = base.isVariant() ? ArgAnyReg : 1;
+    args[1] = 2;
+    allocInputsForCall(i, args);
     Stats::emitInc(a, Stats::Tx64_PropGetSlow);
     bool useCtx = !isContextFixed();
     const StringData* name = prop.rtt.valueString();
     ASSERT(name == NULL || name->isStatic());
 
     CacheHandle ch;
-    void* lookupFn = propLookupPrep(
+    TargetCache::pcb_lookup_func_t lookupFn = propLookupPrep(
       ch, useCtx ? name : propCacheName(name).get(),
       base.isLocal() ? BASE_LOCAL : BASE_CELL,
       useCtx ? DYN_CONTEXT : STATIC_CONTEXT,
       name ? STATIC_NAME : DYN_NAME);
     if (useCtx) {
-      EMIT_CALL5(a,
+      EMIT_CALL(a,
                  lookupFn,
                  IMM(ch),
                  base.isVariant() ? DEREF(baseLoc) : V(baseLoc),
@@ -7120,7 +7458,7 @@ TranslatorX64::translateCGetMProp(const Tracelet& t,
                  A(outLoc),
                  R(rVmFp));
     } else {
-      EMIT_CALL4(a,
+      EMIT_CALL(a,
                  lookupFn,
                  IMM(ch),
                  base.isVariant() ? DEREF(baseLoc) : V(baseLoc),
@@ -7128,18 +7466,7 @@ TranslatorX64::translateCGetMProp(const Tracelet& t,
                  A(outLoc));
     }
     recordReentrantCall(i);
-
-    // If PropCache::lookup returned NULL there's nothing left to do.
-    a.test_reg64_reg64(rax, rax);
-    {
-      JccBlock<CC_Z> ifRaxNotNull(a);
-      ScratchReg fieldAddr(m_regMap, rax);
-      // Our base's register was probably blown away by the call up above
-      m_regMap.allocInputReg(i, kBaseIdx);
-      emitPropGet(i, base, *fieldAddr, outLoc);
-    }
   }
-
   m_regMap.invalidate(i.outStack->location);
 }
 
@@ -7187,7 +7514,7 @@ TranslatorX64::emitArrayElem(const NormalizedInstruction& i,
     array_getm_s(a, sd, &tv);
     array_getm_s0(a, sd, &tv);
   }
-  EMIT_CALL3(a, fptr, R(baseReg), V(keyIn->location), A(outLoc));
+  EMIT_CALL(a, fptr, R(baseReg), V(keyIn->location), A(outLoc));
   recordReentrantCall(i);
   m_regMap.invalidate(outLoc);
 
@@ -7219,7 +7546,7 @@ TranslatorX64::translateCGetM_LEE(const Tracelet& t,
   const Location& outLoc    = i.outStack->location;
   ASSERT(key1.isInt() && key2.isString());
 
-  TRACE(1, "nvGet2 outLoc: (%s, %d)\n", outLoc.spaceName(), outLoc.offset);
+  TRACE(1, "nvGet2 outLoc: (%s, %lld)\n", outLoc.spaceName(), outLoc.offset);
   if (false) { // typeCheck
     ArrayData *a;
     TypedValue tv;
@@ -7234,19 +7561,18 @@ TranslatorX64::translateCGetM_LEE(const Tracelet& t,
   bool decRefStrKey =
     key2.isStack() && key2.rtt.valueString() == NULL;
   fptr = decRefStrKey ? ((void*)array_getm_is) : ((void*)array_getm_is0);
-  if (array.isVariant()) {
-    EMIT_CALL4(a, fptr,
-               DEREF(array.location),
-               V(key1.location),
-               V(key2.location),
-               A(outLoc));
-  } else {
-    EMIT_CALL4(a, fptr,
-               V(array.location),
-               V(key1.location),
-               V(key2.location),
-               A(outLoc));
-  }
+
+  int args[3];
+  args[0] = array.isVariant() ? ArgAnyReg : 0;
+  args[1] = 1;
+  args[2] = 2;
+  allocInputsForCall(i, args);
+
+  EMIT_CALL(a, fptr,
+            array.isVariant() ? DEREF(array.location) : V(array.location),
+            V(key1.location),
+            V(key2.location),
+            A(outLoc));
   recordReentrantCall(i);
   m_regMap.invalidate(outLoc);
 }
@@ -7267,11 +7593,11 @@ void TranslatorX64::translateCGetM_GE(const Tracelet& t,
   {
     UnlikelyIfBlock<CC_Z> ifNoGlobal(a, astubs, &noGlobalRet);
     if (const StringData* name = i.inputs[nameIdx]->rtt.valueString()) {
-      EMIT_CALL1(astubs, raiseUndefVariable, IMM((uint64_t)name));
+      EMIT_CALL(astubs, raiseUndefVariable, IMM((uint64_t)name));
     } else {
       m_regMap.allocInputReg(i, nameIdx);
       PhysReg nameReg = getReg(i.inputs[nameIdx]->location);
-      EMIT_CALL1(astubs, raiseUndefVariable, R(nameReg));
+      EMIT_CALL(astubs, raiseUndefVariable, R(nameReg));
     }
     recordReentrantStubCall(i);
 
@@ -7282,7 +7608,7 @@ void TranslatorX64::translateCGetM_GE(const Tracelet& t,
   }
 
   emitIncRefGeneric(rax, 0);
-  m_regMap.allocInputReg(i, keyIdx);
+  m_regMap.allocInputReg(i, keyIdx, argNumToRegName[1]);
   // We're going to be making a function call in both branches so
   // let's only emit the spilling code once.
   emitCallSaveRegs();
@@ -7293,7 +7619,7 @@ void TranslatorX64::translateCGetM_GE(const Tracelet& t,
     ASSERT(key.isString() || key.isInt());
     void* fptr =
       key.isString() ? (void*)non_array_getm_s : (void*)non_array_getm_i;
-    EMIT_CALL3(astubs, (TCA)fptr, R(rax), V(key.location), A(outLoc));
+    EMIT_CALL(astubs, (TCA)fptr, R(rax), V(key.location), A(outLoc));
     recordReentrantStubCall(i);
   }
   a.load_reg64_disp_reg64(rax, TVOFF(m_data), rax);
@@ -7325,6 +7651,10 @@ TranslatorX64::translateCGetM(const Tracelet& t,
 
   const DynLocation& base = *i.inputs[0];
   const DynLocation& key  = *i.inputs[1];
+  int args[2];
+  args[0] = base.isVariant() ? ArgAnyReg : 0;
+  args[1] = 1;
+  allocInputsForCall(i, args);
 
   PhysReg baseReg = getReg(base.location);
   LazyScratchReg baseScratch(m_regMap);
@@ -7347,6 +7677,16 @@ TranslatorX64::analyzeVGetG(Tracelet& t, NormalizedInstruction& i) {
   i.m_txFlags = simplePlan(isSupportedInstrVGetG(i));
 }
 
+static TypedValue* lookupAddBoxedGlobal(StringData* name) {
+  VarEnv* ve = g_vmContext->m_globalVarEnv;
+  TypedValue* r = ve->lookupAdd(name);
+  if (r->m_type != KindOfRef) {
+    tvBox(r);
+  }
+  LITSTR_DECREF(name);
+  return r;
+}
+
 void
 TranslatorX64::translateVGetG(const Tracelet& t,
                               const NormalizedInstruction& i) {
@@ -7357,18 +7697,23 @@ TranslatorX64::translateVGetG(const Tracelet& t,
 
   using namespace TargetCache;
   const StringData* maybeName = i.inputs[0]->rtt.valueString();
-  CacheHandle ch = BoxedGlobalCache::alloc(maybeName);
+  if (!maybeName) {
+    EMIT_CALL(a, lookupAddBoxedGlobal, V(i.inputs[0]->location));
+    recordCall(i);
+  } else {
+    CacheHandle ch = BoxedGlobalCache::alloc(maybeName);
 
-  if (false) { // typecheck
-    StringData *key = NULL;
-    TypedValue UNUSED *glob = BoxedGlobalCache::lookupCreate(ch, key);
+    if (false) { // typecheck
+      StringData *key = NULL;
+      TypedValue UNUSED *glob = BoxedGlobalCache::lookupCreate(ch, key);
+    }
+    SKTRACE(1, i.source, "ch %d\n", ch);
+    EMIT_CALL(a, BoxedGlobalCache::lookupCreate,
+               IMM(ch),
+               V(i.inputs[0]->location));
+    recordCall(i);
   }
-  SKTRACE(1, i.source, "ch %d\n", ch);
-  EMIT_CALL2(a, BoxedGlobalCache::lookupCreate,
-             IMM(ch),
-             V(i.inputs[0]->location));
-  recordCall(i);
-  m_regMap.bind(rax, i.outStack->location, KindOfVariant, RegInfo::DIRTY);
+  m_regMap.bind(rax, i.outStack->location, KindOfRef, RegInfo::DIRTY);
   emitIncRefGeneric(rax, 0);
   emitDeref(a, rax, rax);
 }
@@ -7377,6 +7722,26 @@ void
 TranslatorX64::translateVGetM(const Tracelet& t,
                               const NormalizedInstruction& i) {
   NOT_REACHED();
+}
+
+static TypedValue* lookupGlobal(StringData* name) {
+  VarEnv* ve = g_vmContext->m_globalVarEnv;
+  TypedValue* r = ve->lookup(name);
+  // If the global didn't exist, we need to leave name un-decref'd for
+  // the caller to raise warnings.
+  if (r) {
+    LITSTR_DECREF(name);
+    if (r->m_type == KindOfRef) r = r->m_data.ptv;
+  }
+  return r;
+}
+
+static TypedValue* lookupAddGlobal(StringData* name) {
+  VarEnv* ve = g_vmContext->m_globalVarEnv;
+  TypedValue* r = ve->lookupAdd(name);
+  if (r->m_type == KindOfRef) r = r->m_data.ptv;
+  LITSTR_DECREF(name);
+  return r;
 }
 
 /*
@@ -7390,7 +7755,18 @@ TranslatorX64::emitGetGlobal(const NormalizedInstruction& i, int nameIdx,
   using namespace TargetCache;
   ASSERT(i.inputs.size() > size_t(nameIdx));
   ASSERT(i.inputs[nameIdx]->isString());
+
   const StringData *maybeName = i.inputs[nameIdx]->rtt.valueString();
+  if (!maybeName) {
+    m_regMap.allocInputReg(i, nameIdx, argNumToRegName[0]);
+    // Always do a lookup when there's no statically-known name.
+    // There's not much we can really cache here right now anyway.
+    EMIT_CALL(a, allowCreate ? lookupAddGlobal : lookupGlobal,
+                  V(i.inputs[nameIdx]->location));
+    recordCall(i);
+    return;
+  }
+
   CacheHandle ch = GlobalCache::alloc(maybeName);
   if (false) { // typecheck
     StringData* UNUSED key = NULL;
@@ -7398,10 +7774,10 @@ TranslatorX64::emitGetGlobal(const NormalizedInstruction& i, int nameIdx,
     TypedValue* UNUSED glob2 = GlobalCache::lookupCreate(ch, key);
   }
   SKTRACE(1, i.source, "ch %d\n", ch);
-  EMIT_CALL2(a, allowCreate ? GlobalCache::lookupCreate
+  EMIT_CALL(a, allowCreate ? GlobalCache::lookupCreate
                             : GlobalCache::lookup,
              IMM(ch),
-             V(i.inputs[nameIdx]->location));
+             IMM((uint64_t)maybeName));
   recordCall(i);
 }
 
@@ -7414,6 +7790,7 @@ isSupportedInstrCGetG(const NormalizedInstruction& i) {
 void
 TranslatorX64::analyzeCGetG(Tracelet& t, NormalizedInstruction& i) {
   i.m_txFlags = simplePlan(isSupportedInstrCGetG(i));
+  if (i.m_txFlags) i.manuallyAllocInputs = true;
 }
 
 void
@@ -7510,7 +7887,7 @@ TranslatorX64::analyzeIssetM(Tracelet& t, NormalizedInstruction& i) {
     i.inputs.size() == 2 &&
     i.immVec.locationCode() == LL &&
     i.immVecM.size() == 1 &&
-    (i.immVecM[0] == MEC || i.immVecM[0] == MEL) &&
+    mcodeMaybeArrayKey(i.immVecM[0]) &&
     i.inputs[0]->valueType() == KindOfArray &&
     (i.inputs[1]->isString() || i.inputs[1]->isInt())
   );
@@ -7541,13 +7918,13 @@ TranslatorX64::translateIssetM(const Tracelet& t,
       // on the stack, we need to decref strings.
       helper = doIntCheck ? array_issetm_s : array_issetm_s_fast;
     } else {
-      ASSERT(key.isLocal());
+      ASSERT(key.isLocal() || key.location.isLiteral());
       helper = doIntCheck ? array_issetm_s0 : array_issetm_s0_fast;
     }
   }
   ASSERT(helper);
   // The array helpers can reenter; need to sync state.
-  EMIT_CALL2(a, helper, R(arrReg), V(key.location));
+  EMIT_CALL(a, helper, R(arrReg), V(key.location));
 
   // We didn't bother allocating the single output reg above;
   // it lives in rax now.
@@ -7624,7 +8001,7 @@ TranslatorX64::translateCheckTypeOp(const Tracelet& t,
   if (doUninit) {
     const StringData* name = local_name(ni.inputs[0]->location);
     ASSERT(name->isStatic());
-    EMIT_CALL1(a, raiseUndefVariable, IMM((uintptr_t)name));
+    EMIT_CALL(a, raiseUndefVariable, IMM((uintptr_t)name));
     recordReentrantCall(ni);
   }
   m_regMap.allocOutputRegs(ni);
@@ -7648,19 +8025,18 @@ isSupportedSetMArray(const NormalizedInstruction& i) {
   const LocationCode lcode = iv.locationCode();
   return
     i.immVecM.size() == 1 && lcode == LL &&
-                             (i.immVecM[0] == MEC || i.immVecM[0] == MEL) &&
+    mcodeMaybeArrayKey(i.immVecM[0]) &&
     i.inputs.size() == 3 &&
     i.inputs[0]->isStack() && // rhs
     i.inputs[1]->valueType() == KindOfArray && // base
-    (i.inputs[2]->isInt() ||
-     i.inputs[2]->isString()); // key
+    (i.inputs[2]->isInt() || i.inputs[2]->isString()); // key
 }
 
 static bool
 isSupportedSetMProp(const NormalizedInstruction& i) {
   if (i.inputs.size() != 3) return false;
-  SKTRACE(2, i.source, "setM prop candidate: MP-ness %d, rtt %s\n",
-          i.immVecM[0] == MPC || i.immVecM[0] == MPL,
+  SKTRACE(2, i.source, "setM prop candidate: prop supported: %d, rtt %s\n",
+          mcodeMaybePropName(i.immVecM[0]),
           i.inputs[2]->rtt.pretty().c_str());
   return isNormalPropertyAccess(i, 2, 1) && !curFunc()->isPseudoMain();
 }
@@ -7669,11 +8045,13 @@ void
 TranslatorX64::emitPropSet(const NormalizedInstruction& i,
                            const DynLocation& base,
                            const DynLocation& rhs,
+                           PhysReg rhsReg,
                            PhysReg fieldAddr) {
-  PhysReg rhsReg = getReg(rhs.location);
-  DataType rhsType = rhs.rtt.outerType();
+  DataType rhsType = rhs.rtt.valueType();
 
-  emitIncRef(rhsReg, rhsType);
+  if (i.outStack || rhs.isLocal()) {
+    emitIncRef(rhsReg, rhsType);
+  }
 
   // If the field is a Var, we need to dereference the Var so that
   // fieldAddr holds the address of the inner cell.
@@ -7689,13 +8067,7 @@ TranslatorX64::emitPropSet(const NormalizedInstruction& i,
     ASSERT(i.inputs[kBaseIdx] == &base);
     m_regMap.allocInputReg(i, kBaseIdx);
     PhysReg baseReg = getReg(base.location);
-    ScratchReg scratch(m_regMap);
-    if (base.isVariant()) {
-      ASSERT(i.immVec.locationCode() == LR);
-      emitDeref(a, baseReg, *scratch);
-      baseReg = *scratch;
-    }
-    emitDecRef(i, baseReg, KindOfObject);
+    emitDecRef(i, baseReg, base.outerType());
   }
 }
 
@@ -7703,69 +8075,101 @@ void
 TranslatorX64::translateSetMProp(const Tracelet& t,
                                  const NormalizedInstruction& i) {
   using namespace TargetCache;
-  ASSERT(i.inputs.size() == 3 && i.outStack);
+  ASSERT(i.inputs.size() == 3);
 
   const int kRhsIdx       = 0;
+  const int kBaseIdx      = 1;
+  const int kPropIdx      = 2;
   const DynLocation& val  = *i.inputs[kRhsIdx];
-  const DynLocation& base = *i.inputs[1];
-  const DynLocation& prop = *i.inputs[2];
-  const Slot propOffset    = getPropertyOffset(i, 2, 1);
-  ASSERT(val.isStack() && val.outerType() != KindOfVariant);
+  const DynLocation& base = *i.inputs[kBaseIdx];
+  const DynLocation& prop = *i.inputs[kPropIdx];
+  const Slot propOffset   = getPropertyOffset(i, kPropIdx, 1);
 
   const Location& valLoc  = val.location;
   const Location& baseLoc = base.location;
   const Location& propLoc = prop.location;
 
-  if (propOffset != kInvalidSlot && i.immVec.locationCode() == LC) {
+  // We only combine a CGetL with a SetM if the SetM's value
+  // is unused. Otherwise we'd need to do the same incRef
+  // on the result of CGetL that CGetL already does for us.
+  ASSERT(!i.outStack || !val.isLocal());
+  // We cant get a variant unless we combined a CGetL
+  ASSERT(val.isLocal() || !val.isVariant());
+
+  bool decRefRhs = !i.outStack && !val.isLocal();
+
+  bool fastSet = propOffset != kInvalidSlot && i.immVec.locationCode() == LC;
+
+  int args[3];
+  args[kRhsIdx] = fastSet ? ArgAnyReg : 3;
+  args[kBaseIdx] = fastSet || base.isVariant() ? ArgAnyReg : 1;
+  args[kPropIdx] = fastSet ? ArgDontAllocate : 2;
+  allocInputsForCall(i, args);
+
+  LazyScratchReg rhsTmp(m_regMap);
+  PhysReg rhsReg = getReg(valLoc);
+  if (val.isVariant()) {
+    rhsTmp.alloc();
+    emitDeref(a, rhsReg, *rhsTmp);
+    rhsReg = *rhsTmp;
+  }
+
+  if (fastSet) {
     ASSERT(!base.isLocal() && !base.isVariant());
     Stats::emitInc(a, Stats::Tx64_PropSetFast);
     ScratchReg rField(m_regMap);
     a.lea_reg64_disp_reg64(getReg(baseLoc), int(propOffset), *rField);
-    emitPropSet(i, base, val, *rField);
+    emitPropSet(i, base, val, rhsReg, *rField);
+    decRefRhs = false;
   } else {
+
     Stats::emitInc(a, Stats::Tx64_PropSetSlow);
     bool useCtx = !isContextFixed();
     const StringData* name = prop.rtt.valueString();
     ASSERT(name == NULL || name->isStatic());
 
     CacheHandle ch;
-    void* setFn = propSetPrep(
+    TargetCache::pcb_set_func_t setFn = propSetPrep(
       ch, useCtx ? name : propCacheName(name).get(),
-      base.isLocal() ? BASE_LOCAL : BASE_CELL,
+      base.isLocal() || base.isVariant() ? BASE_LOCAL : BASE_CELL,
       useCtx ? DYN_CONTEXT : STATIC_CONTEXT,
       name ? STATIC_NAME : DYN_NAME);
     if (useCtx) {
-      EMIT_CALL6(a, setFn,
+      EMIT_CALL(a, setFn,
                  IMM(ch),
                  base.isVariant() ? DEREF(baseLoc) : V(baseLoc),
                  V(propLoc),
-                 V(valLoc),
-                 IMM(val.rtt.outerType()),
+                 R(rhsReg),
+                 IMM(val.rtt.valueType()),
                  R(rVmFp));
     } else {
-      EMIT_CALL5(a, setFn,
+      EMIT_CALL(a, setFn,
                  IMM(ch),
                  base.isVariant() ? DEREF(baseLoc) : V(baseLoc),
                  V(propLoc),
-                 V(valLoc),
-                 IMM(val.rtt.outerType()));
+                 R(rhsReg),
+                 IMM(val.rtt.valueType()));
     }
     recordReentrantCall(i);
-    ScratchReg rField(m_regMap, rax);
-    m_regMap.allocInputReg(i, kRhsIdx);
-
-    // If PropCache::set returned NULL there's nothing left to do except
-    // copy rhs to the output location
-    a.    test_reg64_reg64(rax, rax);
-    {
-      JccBlock<CC_Z> ifRaxNotNull(a);
-      emitPropSet(i, base, val, *rField);
+    if (!base.isLocal() && base.isVariant()) {
+      m_regMap.allocInputReg(i, kBaseIdx);
+      emitDecRef(i, getReg(baseLoc), KindOfRef);
+    }
+    if (i.outStack || decRefRhs) {
+      m_regMap.allocInputReg(i, kRhsIdx);
+      rhsReg = getReg(valLoc);
     }
   }
 
-  m_regMap.allocOutputRegs(i);
-  PhysReg rhsReg = getReg(i.inputs[kRhsIdx]->location);
-  emitMovRegReg(rhsReg, getReg(i.outStack->location));
+  if (i.outStack) {
+    ASSERT(!val.isVariant());
+    m_regMap.cleanRegs(RegSet(rhsReg));
+    m_regMap.invalidate(valLoc);
+    m_regMap.bind(rhsReg, i.outStack->location,
+                  val.valueType(), RegInfo::DIRTY);
+  } else if (decRefRhs) {
+    emitDecRef(i, rhsReg, val.outerType());
+  }
 }
 
 void
@@ -7775,6 +8179,9 @@ TranslatorX64::analyzeSetM(Tracelet& t, NormalizedInstruction& i) {
   ASSERT(!(isSupportedSetMProp(i) && isSupportedSetMArray(i)));
   i.m_txFlags = supportedPlan(isSupportedSetMProp(i) ||
                               isSupportedSetMArray(i));
+  if (i.m_txFlags) {
+    i.manuallyAllocInputs = true;
+  }
 }
 
 void
@@ -7785,13 +8192,29 @@ TranslatorX64::translateSetM(const Tracelet& t,
     return;
   }
 
-  ASSERT(i.outStack);
   ASSERT(i.inputs.size() == 3);
   const DynLocation& val = *i.inputs[0];
   const DynLocation& arr = *i.inputs[1];
   const DynLocation& key = *i.inputs[2];
-  ASSERT(val.isStack() && val.outerType() != KindOfVariant);
   ASSERT(arr.isLocal());
+
+  ASSERT(val.isLocal() || !val.isVariant());
+  ASSERT(!i.outStack || !val.isLocal());
+
+  bool forceIncDec = false;
+  if (val.isLocal() &&
+      (val.location == arr.location ||
+       (val.isVariant() && arr.isVariant() &&
+        val.valueType() == arr.valueType()))) {
+    /*
+     * cant avoid the inc/dec on val
+     * in the case of $a[...] = $a;
+     */
+    forceIncDec = true;
+    /* we dont allow a local input unless we also folded
+       a following pop */
+    ASSERT(!i.outStack);
+  }
 
   const Location valLoc = val.location;
   const Location arrLoc = arr.location;
@@ -7813,44 +8236,68 @@ TranslatorX64::translateSetM(const Tracelet& t,
     UNUSED ArrayData* ret = array_setm_ik1_iv(cell, arr, 12, 3);
     ret = array_setm_ik1_v(cell, arr, 12, rhs);
     ret = array_setm_sk1_v(cell, arr, strKey, rhs);
+    ret = array_setm_sk1_v0(cell, arr, strKey, rhs);
     ret = array_setm_s0k1_v(cell, arr, strKey, rhs);
+    ret = array_setm_s0k1_v0(cell, arr, strKey, rhs);
+    ret = array_setm_s0k1nc_v(cell, arr, strKey, rhs);
+    ret = array_setm_s0k1nc_v0(cell, arr, strKey, rhs);
   }
-  if (key.isInt() && val.isInt()) {
-    // If the rhs is Int64, we can use a specialized helper
-    if (useBoxedForm) {
-      EMIT_CALL4(a, array_setm_ik1_iv,
-                 V(arrLoc),
-                 DEREF(arrLoc),
-                 V(keyLoc),
-                 V(valLoc));
-    } else {
-      EMIT_CALL4(a, array_setm_ik1_iv,
-                 IMM(0),
-                 V(arrLoc),
-                 V(keyLoc),
-                 V(valLoc));
-    }
+  bool isInt = key.isInt() && IS_INT_TYPE(val.rtt.valueType());
+
+  /*
+   * The value can be passed as A, V or DEREF according to:
+   *
+   *                       | val.isVariant() | !val.isVariant()
+   * ----------------------+-----------------+-----------------------------
+   * int key + int value   | DEREF(valLoc)   | V(valLoc)
+   * everything else       | V(valLoc)       | A(valLoc)
+   */
+  int deRefLevel = isInt + val.isVariant();
+
+  int args[3];
+  args[0] = deRefLevel == 1 ? 3 : deRefLevel == 2 ? ArgAnyReg : ArgDontAllocate;
+  args[1] = useBoxedForm ? 0 : 1;
+  args[2] = 2;
+  allocInputsForCall(i, args);
+
+  if (isInt) {
+    // If the key and rhs are Int64, we can use a specialized helper
+    fptr = (void*)array_setm_ik1_iv;
   } else {
-    // Otherwise, we pass the rhs by address
     bool decRefKey = key.rtt.isString() && keyLoc.isStack();
-    fptr = key.rtt.isString() ?
-      (decRefKey ? (void*)array_setm_sk1_v :
-                   (void*)array_setm_s0k1_v) :
-              (void*)array_setm_ik1_v;
-    if (useBoxedForm) {
-      EMIT_CALL4(a, fptr,
-                 V(arrLoc),
-                 DEREF(arrLoc),
-                 V(keyLoc),
-                 A(valLoc));
-    } else {
-      EMIT_CALL4(a, fptr,
-                 IMM(0),
-                 V(arrLoc),
-                 V(keyLoc),
-                 A(valLoc));
-    }
+    bool decRefValue = forceIncDec ||
+      (!i.outStack && !val.isLocal() &&
+       IS_REFCOUNTED_TYPE(val.rtt.valueType()));
+    fptr = decRefValue ?
+      (key.rtt.isString() ?
+       (decRefKey ? (void*)array_setm_sk1_v0 :
+        (i.hasConstImm ? (void*)array_setm_s0k1nc_v0 :
+         (void*)array_setm_s0k1_v0)) :
+       (void*)array_setm_ik1_v0) :
+      (key.rtt.isString() ?
+       (decRefKey ? (void*)array_setm_sk1_v :
+        (i.hasConstImm ? (void*)array_setm_s0k1nc_v :
+         (void*)array_setm_s0k1_v)) :
+       (void*)array_setm_ik1_v);
   }
+
+  if (forceIncDec) {
+    LazyScratchReg tmp(m_regMap);
+    PhysReg rhsReg = getReg(valLoc);
+    if (val.isVariant()) {
+      tmp.alloc();
+      emitDeref(a, rhsReg, *tmp);
+      rhsReg = *tmp;
+    }
+    emitIncRef(rhsReg, KindOfArray);
+  }
+  EMIT_CALL(a, fptr,
+            useBoxedForm ? V(arrLoc) : IMM(0),
+            useBoxedForm ? DEREF(arrLoc) : V(arrLoc),
+            V(keyLoc),
+            deRefLevel == 2 ? DEREF(valLoc) :
+            deRefLevel == 1 ? V(valLoc) : A(valLoc));
+
   recordReentrantCall(i);
   // If we did not used boxed form, we need to tell the register allocator
   // to associate rax with arrLoc
@@ -7861,12 +8308,15 @@ TranslatorX64::translateSetM(const Tracelet& t,
     m_regMap.bind(rax, arrLoc, KindOfArray, RegInfo::DIRTY);
   }
 
-  // Bring the output value into its correct location on the stack.
-  // Note that this has to happen after all of the above, since it
-  // needs to read the key from this location.
-  m_regMap.allocInputReg(i, 0);
-  m_regMap.bind(getReg(valLoc), i.outStack->location,
-                val.outerType(), RegInfo::DIRTY);
+  if (i.outStack) {
+    ASSERT(!val.isVariant());
+    // Bring the output value into its correct location on the stack.
+    // Note that this has to happen after all of the above, since it
+    // needs to read the key from this location.
+    m_regMap.allocInputReg(i, 0);
+    m_regMap.bind(getReg(valLoc), i.outStack->location,
+                  val.outerType(), RegInfo::DIRTY);
+  }
 }
 
 void
@@ -7892,7 +8342,7 @@ TranslatorX64::translateSetOpL(const Tracelet& t,
   const int localIdx = 1;
   ASSERT(inputs[localIdx]->isLocal());
   ASSERT(inputs[valIdx]->isStack());
-  ASSERT(inputs[valIdx]->outerType() != KindOfVariant);
+  ASSERT(inputs[valIdx]->outerType() != KindOfRef);
 
   const SetOpOp subOp = SetOpOp(i.imm[1].u_OA);
   Opcode arithOp = setOpOpToOpcodeOp(subOp);
@@ -7965,7 +8415,7 @@ TranslatorX64::analyzeUnsetM(Tracelet& t, NormalizedInstruction& i) {
     i.inputs.size() == 2 &&
     i.immVec.locationCode() == LL &&
     i.immVecM.size() == 1 &&
-    (i.immVecM[0] == MEC || i.immVecM[0] == MEL) &&
+    mcodeMaybeArrayStringKey(i.immVecM[0]) &&
     i.inputs[0]->outerType() == KindOfArray &&
     i.inputs[1]->isString()
   );
@@ -7989,7 +8439,7 @@ TranslatorX64::translateUnsetM(const Tracelet& t,
     // array is will also decRef the unset value for us if appropriate. If
     // copy-on-write is triggered, it will also incRef the new array and decRef
     // the old array for us.
-    EMIT_CALL2(a, array_unsetm_s, V(base.location), V(key.location));
+    EMIT_CALL(a, array_unsetm_s, V(base.location), V(key.location));
   } else {
     if (false) { // type check
       ArrayData *arr = NULL;
@@ -7999,7 +8449,7 @@ TranslatorX64::translateUnsetM(const Tracelet& t,
     // If the key is present in the array, array_unsetm_s0 will decRef the
     // unset value for us if appropriate. If copy-on-write is triggered, it
     // will also incRef the new array and decRef the old array for us.
-    EMIT_CALL2(a, array_unsetm_s0, V(base.location), V(key.location));
+    EMIT_CALL(a, array_unsetm_s0, V(base.location), V(key.location));
   }
   recordReentrantCall(i);
   m_regMap.invalidate(base.location);
@@ -8018,8 +8468,13 @@ TranslatorX64::analyzeReqLit(Tracelet& t, NormalizedInstruction& i,
                               efile &&
                               (RuntimeOption::RepoAuthoritative ||
                                RuntimeOption::ServerStatCache));
+  if (efile && efile->unit()->getMainReturn()->m_type != KindOfUninit) {
+    i.outStack->rtt = RuntimeType(efile->unit()->getMainReturn()->m_type);
+  }
+
   // We don't need the reference lookupIncludeRoot made for us.
   if (efile) efile->decRef();
+  i.manuallyAllocInputs = true;
 }
 
 void
@@ -8035,33 +8490,6 @@ TranslatorX64::analyzeReqMod(Tracelet& t, NormalizedInstruction& i) {
 void
 TranslatorX64::analyzeReqSrc(Tracelet& t, NormalizedInstruction& i) {
   analyzeReqLit(t, i, InclOpRelative | InclOpLocal);
-}
-
-inline bool
-checkEval(HPHP::Eval::PhpFile* efile) {
-  return !TargetCache::testAndSetBit(efile->getId());
-}
-
-uint64 TranslatorX64::reqLitHelper(const ReqLitStaticArgs* args,
-                                   Cell *fp, Cell *sp) {
-  vmfp() = fp;
-  vmsp() = sp + 1;
-  HPHP::Eval::PhpFile* efile = args->m_efile;
-  VMExecutionContext *ec = g_vmContext;
-  if (!checkEval(efile)) {
-    ec->m_stack.pushTrue();
-    return (uint64)ec + 1;
-  }
-  EXCEPTION_GATE_ENTER();
-  tl_regState = REGSTATE_CLEAN;
-  Unit *unit = efile->unit();
-  PC pc = curUnit()->at(args->m_pcOff);
-  bool runPseudoMain = ec->evalUnit(unit, args->m_local, pc,
-                                    EventHook::PseudoMain);
-  tl_regState = REGSTATE_DIRTY;
-  if (!runPseudoMain) return (uint64)ec + 1;
-  ec->m_fp->m_savedRip = (uint64)args->m_fallthrough;
-  EXCEPTION_GATE_RETURN((uint64)ec);
 }
 
 void
@@ -8089,26 +8517,58 @@ TranslatorX64::translateReqLit(const Tracelet& t,
   Unit *unit = efile->unit();
   Func *func = unit->getMain();
 
-  ASSERT(m_requireHelper);
   const Offset after = nextSrcKey(t, i).offset();
   TRACE(1, "requireHelper: efile %p offset %d\n", efile, after);
 
-  m_regMap.allocOutputRegs(i);
-  syncOutputs(t);
+  if (i.skipSync) {
+    /*
+     * getting here means there was nothing to do between
+     * the previous req and this one. Any spill code we generate
+     * here would be broken (because the rbx is wrong), so
+     * verify that we dont generate anything...
+     */
+    TCA s DEBUG_ONLY = a.code.frontier;
+    syncOutputs(0);
+    ASSERT(s == a.code.frontier);
+  } else {
+    syncOutputs(i);
+  }
   ReqLitStaticArgs* args = m_globalData.alloc<ReqLitStaticArgs>();
-  args->m_efile = efile;
-  args->m_pcOff = after;
-  args->m_fallthrough = (TCA)kUninitializedRIP; // Patched below;
-  args->m_local = local;
   emitImmReg(a, (uint64_t)args, argNumToRegName[0]);
-  /* See description in processInit */
-  a.call(m_requireHelper);
-  const Opcode* destPC = unit->at(func->base());
-  SrcKey funcBody(func, destPC);
-  emitBindJmp(funcBody);
-  args->m_fallthrough = a.code.frontier;
-  SrcKey fallThru(curFunc(), after);
-  emitBindJmp(fallThru);
+  emitCall(a, (TCA)reqLitHelper, true);
+
+  args->m_efile = efile;
+  args->m_pseudoMain = emitServiceReq(false, REQ_BIND_REQUIRE, 3,
+                                      uint64_t(args),
+                                      uint64_t(func), uint64_t(func->base()));
+  args->m_pcOff = after;
+  args->m_local = local;
+
+  if (i.breaksBB) {
+    SrcKey fallThru(curFunc(), after);
+    emitBindJmp(fallThru);
+  } else {
+    /*
+     * When we get here, rVmSp points to the actual top of stack,
+     * but the rest of this tracelet assumes that rVmSp is set to
+     * the top of the stack at the beginning of the tracelet, so we
+     * have to fix it up here.
+     *
+     */
+    if (!i.outStack) {
+      /* as a special case, if we're followed by a pop, and
+         we return a non-refcounted type, and then followed
+         by another require, we can avoid the add here and the sub
+         in the following require
+      */
+    } else {
+      int delta = i.stackOff + getStackDelta(i);
+      if (delta != 0) {
+        // i.stackOff is in negative Cells, not bytes.
+        a.    add_imm64_reg64(cellsToBytes(delta), rVmSp);
+      }
+    }
+  }
 }
 
 void
@@ -8128,7 +8588,6 @@ TranslatorX64::translateReqSrc(const Tracelet& t,
                                const NormalizedInstruction& i) {
   translateReqLit(t, i, InclOpRelative | InclOpLocal);
 }
-
 
 TCA
 TranslatorX64::emitNativeTrampoline(TCA helperAddr) {
@@ -8154,8 +8613,7 @@ TranslatorX64::emitNativeTrampoline(TCA helperAddr) {
     m_trampolineSize = atrampolines.code.frontier - trampAddr;
     ASSERT(m_trampolineSize >= kMinPerTrampolineSize);
   }
-  Debug::recordBCInstr(OpNativeTrampoline, trampAddr,
-                       atrampolines.code.frontier);
+  recordBCInstr(OpNativeTrampoline, atrampolines, trampAddr);
   return trampAddr;
 }
 
@@ -8176,14 +8634,17 @@ void TranslatorX64::analyzeDefCls(Tracelet& t,
 }
 
 static void defClsHelper(PreClass *preClass) {
-  EXCEPTION_GATE_ENTER();
   ASSERT(tl_regState == REGSTATE_DIRTY);
   tl_regState = REGSTATE_CLEAN;
-
   Unit::defClass(preClass);
 
+  /*
+   * m_defClsHelper sync'd the registers for us already.  This means
+   * if an exception propagates we want to leave things as
+   * REGSTATE_CLEAN, since we're still in sync.  Only set it to dirty
+   * if we are actually returning to run in the TC again.
+   */
   tl_regState = REGSTATE_DIRTY;
-  EXCEPTION_GATE_LEAVE();
 }
 
 void TranslatorX64::translateDefCls(const Tracelet& t,
@@ -8193,7 +8654,7 @@ void TranslatorX64::translateDefCls(const Tracelet& t,
 
   ASSERT(m_defClsHelper);
 
-  const Opcode* after = curUnit()->at(nextSrcKey(t, i).offset());
+  const Opcode* after = curUnit()->at(i.source.offset());
 
   /*
      compute the corrected stack ptr as a pseudo-param to m_defClsHelper
@@ -8204,7 +8665,7 @@ void TranslatorX64::translateDefCls(const Tracelet& t,
   ScratchReg offset(m_regMap, rax);
   a.   lea_reg64_disp_reg64(rVmSp, -cellsToBytes(i.stackOff), rax);
 
-  EMIT_CALL2(a, m_defClsHelper, IMM((uint64)c), IMM((uint64)after));
+  EMIT_CALL(a, m_defClsHelper, IMM((uint64)c), IMM((uint64)after));
 }
 
 void TranslatorX64::analyzeDefFunc(Tracelet& t,
@@ -8213,9 +8674,7 @@ void TranslatorX64::analyzeDefFunc(Tracelet& t,
 }
 
 static void defFuncHelper(Func *f) {
-  EXCEPTION_GATE_ENTER();
   f->setCached();
-  EXCEPTION_GATE_LEAVE();
 }
 
 void TranslatorX64::translateDefFunc(const Tracelet& t,
@@ -8223,7 +8682,7 @@ void TranslatorX64::translateDefFunc(const Tracelet& t,
   int fid = i.imm[0].u_IVA;
   Func* f = curFunc()->unit()->lookupFuncId(fid);
 
-  EMIT_CALL1(a, defFuncHelper, IMM((uint64)f));
+  EMIT_CALL(a, defFuncHelper, IMM((uint64)f));
   recordReentrantCall(i);
 }
 
@@ -8256,7 +8715,7 @@ TranslatorX64::translateFPushFunc(const Tracelet& t,
     const UNUSED Func* f = FuncCache::lookup(ch, &sd);
   }
   SKTRACE(1, i.source, "ch %d\n", ch);
-  EMIT_CALL2(a, FuncCache::lookup, IMM(ch), V(inLoc));
+  EMIT_CALL(a, FuncCache::lookup, IMM(ch), V(inLoc));
   recordCall(i);
   emitVStackStore(a, i, rax, funcOff, sz::qword);
 }
@@ -8336,7 +8795,7 @@ TranslatorX64::translateFPushClsMethodD(const Tracelet& t,
         const UNUSED Func* f = StaticMethodCache::lookup(ch, np.second,
                                                          cls, meth);
       }
-      EMIT_CALL4(astubs,
+      EMIT_CALL(astubs,
                  StaticMethodCache::lookup,
                  IMM(ch),
                  IMM(int64(np.second)),
@@ -8447,7 +8906,7 @@ TranslatorX64::translateFPushClsMethodF(const Tracelet& t,
       if (false) { // typecheck
         const UNUSED Func* f = StaticMethodFCache::lookup(ch, cls, name);
       }
-      EMIT_CALL3(astubs,
+      EMIT_CALL(astubs,
                  StaticMethodFCache::lookup,
                  IMM(ch),
                  V(clsLoc->location),
@@ -8524,24 +8983,84 @@ TranslatorX64::translateFPushObjMethodD(const Tracelet &t,
   bool magicCall = false;
   const Func* func = lookupImmutableMethod(baseClass, name, magicCall,
                                            false /* staticLookup */);
-  m_regMap.allocOutputRegs(i);
   m_regMap.scrubStackRange(i.stackOff - 1,
                            i.stackOff - 1 + kNumActRecCells);
   // Popped one cell, pushed an actrec
   int startOfActRec = int(sizeof(Cell)) - int(sizeof(ActRec));
   size_t thisOff = AROFF(m_this) + startOfActRec;
-  // Save $this before we lose it in the helper call.
-  if (!func || !(func->attrs() & AttrStatic)) {
-    emitVStackStore(a, i, getReg(objLoc), thisOff, sz::qword);
-  } else {
-    emitVStackStoreImm(a, i, uintptr_t(baseClass) | 1, thisOff, sz::qword);
-  }
+  size_t funcOff = AROFF(m_func) + startOfActRec;
   emitPushAR(i, func, sizeof(Cell) /*bytesPopped*/,
              false /* isCtor */, false /* clearThis */,
              func && magicCall ? uintptr_t(name) | 1 : 0 /* varEnvInvName */);
+
+  if (!func) {
+    if (baseClass && !(baseClass->attrs() & AttrInterface)) {
+      MethodLookup::LookupResult res =
+        g_vmContext->lookupObjMethod(func, baseClass, name, false);
+      if ((res == MethodLookup::MethodFoundWithThis ||
+           res == MethodLookup::MethodFoundNoThis) &&
+          !func->isAbstract()) {
+        /*
+         * if we found the func in baseClass, then either:
+         *  - its private, and this is always going to be the
+         *    called function, or
+         *  - any derived class must have a func that matches in
+         *    staticness, and is at least as accessible (and in
+         *    particular, you cant override a public/protected
+         *    method with a private method)
+         */
+        if (func->attrs() & AttrPrivate) {
+          emitVStackStoreImm(a, i, uintptr_t(func), funcOff, sz::qword);
+        } else {
+          Offset methodsOff = Class::getMethodsOffset();
+          Offset vecOff = methodsOff + Class::MethodMap::vecOff();
+          ScratchReg scratch(m_regMap);
+          // get the object's class into *scratch
+          a.   load_reg64_disp_reg64(getReg(objLoc),
+                                     ObjectData::getVMClassOffset(),
+                                     *scratch);
+          if (res == MethodLookup::MethodFoundNoThis) {
+            emitDecRef(a, i, getReg(objLoc), KindOfObject);
+            a.   lea_reg64_disp_reg64(*scratch, 1, getReg(objLoc));
+          }
+          emitVStackStore(a, i, getReg(objLoc), thisOff, sz::qword);
+
+          // get the method vector into *scratch
+          a.   load_reg64_disp_reg64(*scratch, vecOff, *scratch);
+          // get the func
+          a.   load_reg64_disp_reg64(*scratch,
+                                     func->methodSlot() * sizeof(Func*),
+                                     *scratch);
+          emitVStackStore(a, i, *scratch, funcOff, sz::qword);
+          Stats::emitInc(a, Stats::TgtCache_MethodFast);
+          return;
+        }
+      } else {
+        func = NULL;
+      }
+    }
+  }
+
   if (func) {
+    if (func->attrs() & AttrStatic) {
+      if (func->attrs() & AttrPrivate) {
+        emitVStackStoreImm(a, i, uintptr_t(curFunc()->cls()) | 1,
+                           thisOff, sz::qword);
+      } else {
+        ScratchReg scratch(m_regMap);
+        a.   load_reg64_disp_reg64(getReg(objLoc),
+                                   ObjectData::getVMClassOffset(),
+                                   *scratch);
+        a.   or_imm32_reg64(1, *scratch);
+        emitVStackStore(a, i, *scratch, thisOff, sz::qword);
+      }
+      emitDecRef(a, i, getReg(objLoc), KindOfObject);
+    } else {
+      emitVStackStore(a, i, getReg(objLoc), thisOff, sz::qword);
+    }
     Stats::emitInc(a, Stats::TgtCache_MethodBypass);
   } else {
+    emitVStackStore(a, i, getReg(objLoc), thisOff, sz::qword);
     using namespace TargetCache;
     CacheHandle ch = MethodCache::alloc();
     if (false) { // typecheck
@@ -8550,7 +9069,7 @@ TranslatorX64::translateFPushObjMethodD(const Tracelet &t,
     }
     int arOff = vstackOffset(i, startOfActRec);
     SKTRACE(1, i.source, "ch %d\n", ch);
-    EMIT_CALL3(a, MethodCache::lookup, IMM(ch),
+    EMIT_CALL(a, MethodCache::lookup, IMM(ch),
                RPLUS(rVmSp, arOff), IMM(uint64_t(name)));
     recordReentrantCall(i);
   }
@@ -8561,10 +9080,8 @@ void TranslatorX64::analyzeFPushCtorD(Tracelet& t,
   i.m_txFlags = supportedPlan(true);
 }
 
-static Instance*
-newInstanceHelper(Class** classCache,
-                  const StringData* clsName, int numArgs,
-                  ActRec* ar, ActRec* prevAr) {
+static inline ALWAYS_INLINE Class* getKnownClass(Class** classCache,
+                                                 const StringData* clsName) {
   Class* cls = *classCache;
   if (UNLIKELY(cls == NULL)) {
     // lookupKnownClass does its own VMRegAnchor'ing.
@@ -8572,9 +9089,26 @@ newInstanceHelper(Class** classCache,
     ASSERT(*classCache && *classCache == cls);
   }
   ASSERT(cls);
+  return cls;
+}
+
+static Instance*
+HOT_FUNC_VM
+newInstanceHelperNoCtor(Class** classCache, const StringData* clsName) {
+  Class* cls = getKnownClass(classCache, clsName);
+  Instance* ret = newInstance(cls);
+  ret->incRefCount();
+  return ret;
+}
+
+static Instance*
+HOT_FUNC_VM
+newInstanceHelper(Class** classCache,
+                  const StringData* clsName, int numArgs,
+                  ActRec* ar, ActRec* prevAr) {
+  Class* cls = getKnownClass(classCache, clsName);
   const Func* f = cls->getCtor();
   Instance* ret = NULL;
-  EXCEPTION_GATE_ENTER();
   if (UNLIKELY(!(f->attrs() & AttrPublic))) {
     VMRegAnchor _;
     UNUSED MethodLookup::LookupResult res =
@@ -8583,7 +9117,6 @@ newInstanceHelper(Class** classCache,
   }
   // Don't start pushing the AR until newInstance returns; it may reenter.
   ret = newInstance(cls);
-  EXCEPTION_GATE_LEAVE();
   f->validate();
   ar->m_func = f;
   ar->initNumArgs(numArgs, true /*fromCtor*/);
@@ -8594,7 +9127,7 @@ newInstanceHelper(Class** classCache,
   ar->setVarEnv(NULL);
   arSetSfp(ar, prevAr);
   TRACE(2, "newInstanceHelper: AR %p: f %p, savedRbp %#lx, savedRip %#lx"
-           " this %p\n",
+        " this %p\n",
         ar, ar->m_func, ar->m_savedRbp, ar->m_savedRip, ar->m_this);
   return ret;
 }
@@ -8613,24 +9146,25 @@ void TranslatorX64::translateFPushCtorD(const Tracelet& t,
   // ready.
   int arOff = vstackOffset(i, -int(sizeof(ActRec)) - cellsToBytes(1));
   m_regMap.scrubStackRange(i.stackOff, i.stackOff + kNumActRecCells + 1);
-  EMIT_CALL5(a, newInstanceHelper,
-             R(*scr),
-             IMM(uintptr_t(clsName)),
-             IMM(numArgs),
-             RPLUS(rVmSp, arOff),     // ActRec
-             R(rVmFp));               // prevAR
+  if (i.noCtor) {
+    EMIT_CALL(a, newInstanceHelperNoCtor,
+              R(*scr),
+              IMM(uintptr_t(clsName)));
+  } else {
+    EMIT_CALL(a, newInstanceHelper,
+              R(*scr),
+              IMM(uintptr_t(clsName)),
+              IMM(numArgs),
+              RPLUS(rVmSp, arOff),     // ActRec
+              R(rVmFp));               // prevAR
+  }
   recordReentrantCall(i);
   // The callee takes care of initializing the actRec, and returns the new
   // object.
   m_regMap.bind(rax, i.outStack->location, KindOfObject, RegInfo::DIRTY);
 }
 
-static void
-fatalNullThis() {
-  EXCEPTION_GATE_ENTER();
-  raise_error(Strings::FATAL_NULL_THIS);
-  EXCEPTION_GATE_RETURN();
-}
+static void fatalNullThis() { raise_error(Strings::FATAL_NULL_THIS); }
 
 void
 TranslatorX64::translateThis(const Tracelet &t,
@@ -8641,17 +9175,19 @@ TranslatorX64::translateThis(const Tracelet &t,
   PhysReg out = getReg(i.outStack->location);
   a.   load_reg64_disp_reg64(rVmFp, AROFF(m_this), out);
 
-  if (curFunc()->cls() == NULL) {  // Non-class
-    a.   test_reg64_reg64(out, out);
-    a.   jz(astubs.code.frontier); // jz if_null
-  }
+  if (!i.guardedThis) {
+    if (curFunc()->cls() == NULL) {  // Non-class
+      a.   test_reg64_reg64(out, out);
+      a.   jz(astubs.code.frontier); // jz if_null
+    }
 
-  a.   test_imm32_reg64(1, out);
-  {
-    UnlikelyIfBlock<CC_NZ> ifThisNull(a, astubs);
-    // if_null:
-    EMIT_CALL0(astubs, fatalNullThis);
-    recordReentrantStubCall(i);
+    a.   test_imm32_reg64(1, out);
+    {
+      UnlikelyIfBlock<CC_NZ> ifThisNull(a, astubs);
+      // if_null:
+      EMIT_CALL(astubs, fatalNullThis);
+      recordReentrantStubCall(i);
+    }
   }
   emitIncRef(out, KindOfObject);
 }
@@ -8744,12 +9280,10 @@ TranslatorX64::translateFPushFuncD(const Tracelet& t,
         StringData sd("foo");
         FixedFuncCache::lookupFailed(&sd);
       }
-      emitCallSaveRegs();
-      int arg = 0;
-      emitImmReg(astubs, uintptr_t(name), argNumToRegName[arg++]);
-      emitCall(astubs,(TCA)FixedFuncCache::lookupFailed);
+
+      EMIT_CALL(astubs, TCA(FixedFuncCache::lookupFailed),
+                        IMM(uintptr_t(name)));
       recordReentrantStubCall(i);
-      m_regMap.smashRegs(kCallerSaved);
       emitMovRegReg(astubs, rax, *scratch);
     }
     emitVStackStore(a, i, *scratch, funcOff, sz::qword);
@@ -8872,25 +9406,6 @@ TranslatorX64::translateFCall(const Tracelet& t,
   const Opcode* atCall = i.pc();
   const Opcode* after = curUnit()->at(nextSrcKey(t, i).offset());
 
-  emitLoadSurpriseFlags();
-  a.test_reg64_reg64(rScratch, rScratch);
-  {
-    UnlikelyIfBlock<CC_NZ> ifTracer(a, astubs);
-    if (false) { // typecheck
-      const ActRec* ar = NULL;
-      EventHook::FunctionEnter(ar, 0);
-    }
-    astubs.lea_reg64_disp_reg64(rVmSp, cellsToBytes(numArgs),
-                                argNumToRegName[0]);
-    CT_ASSERT(EventHook::NormalFunc == 0);
-    astubs.xor_reg32_reg32(argNumToRegName[1], argNumToRegName[1]);
-    emitCall(astubs, (TCA)&EventHook::FunctionEnter);
-    // Record a "before" fixup here.  After we've committed to the
-    // call we'll record an "after" fixup (see emitBindCall).
-    recordStubCall(i);
-    m_regMap.smashRegs(kCallerSaved);
-  }
-
   // Caller-specific fields: return addresses and the frame pointer
   // offset.
   ASSERT(sizeof(Cell) == 1 << 4);
@@ -8961,10 +9476,10 @@ staticLocHelper(StringData* name, TargetCache::CacheHandle ch) {
     retval = map->nvGet(name);
   }
   ASSERT(retval);
-  if (retval->m_type != KindOfVariant) {
+  if (retval->m_type != KindOfRef) {
     tvBox(retval);
   }
-  ASSERT(retval->m_type == KindOfVariant);
+  ASSERT(retval->m_type == KindOfRef);
   TypedValue** chTv = (TypedValue**)TargetCache::handleToPtr(ch);
   ASSERT(*chTv == NULL);
   return (*chTv = retval);
@@ -8986,7 +9501,7 @@ TranslatorX64::translateStaticLocInit(const Tracelet& t,
     UnlikelyIfBlock<CC_Z> fooey(a, astubs);
     // No point spilling outLoc in this branch; it doesn't have its final
     // value yet.
-    m_regMap.cleanRegs(kCallerSaved);
+    //
     // The helper is going to read the value from memory, so record it.  We
     // could also pass type/value as parameters, but this is hopefully a
     // rare path.
@@ -8997,19 +9512,16 @@ TranslatorX64::translateStaticLocInit(const Tracelet& t,
     }
     const StringData* name = curFunc()->unit()->lookupLitstrId(i.imm[1].u_SA);
     ASSERT(name->isStatic());
-    emitImmReg(astubs, uintptr_t(name), argNumToRegName[0]);
-    emitImmReg(astubs, ch, argNumToRegName[1]);
-    emitCall(astubs, TCA(staticLocHelper));
+    EMIT_CALL(astubs, TCA(staticLocHelper), IMM(uintptr_t(name)), IMM(ch));
     recordReentrantStubCall(i);
-    m_regMap.smashRegs(kCallerSaved);
     emitMovRegReg(astubs, rax, *output);
   }
   // Now we've got the outer variant in *output. Get the address of the
   // inner cell, since that's the enregistered representation of a variant.
   emitDeref(a, *output, *output);
-  emitIncRef(*output, KindOfVariant);
+  emitIncRef(*output, KindOfRef);
   // Turn output into the local we just initialized.
-  m_regMap.bindScratch(output, outLoc, KindOfVariant, RegInfo::DIRTY);
+  m_regMap.bindScratch(output, outLoc, KindOfRef, RegInfo::DIRTY);
 }
 
 void
@@ -9022,6 +9534,7 @@ TranslatorX64::analyzeVerifyParamType(Tracelet& t, NormalizedInstruction& i) {
     // will continue failing.
     bool compileTimeCheck = tc.check(frame_local(curFrame(), param), curFunc());
     i.m_txFlags = nativePlan(compileTimeCheck);
+    i.manuallyAllocInputs = true;
   } else {
     bool trace = i.inputs[0]->isObject() ||
                  (i.inputs[0]->isNull() && tc.nullable());
@@ -9041,9 +9554,7 @@ VerifyParamTypeFail(int paramNum) {
         __func__,
         tv->m_data.pobj->getVMClass()->name()->data(),
         tc.typeName()->data());
-  EXCEPTION_GATE_ENTER();
   tc.verifyFail(func, paramNum, tv);
-  EXCEPTION_GATE_LEAVE();
 }
 
 // check class hierarchy and fail if no match
@@ -9110,7 +9621,7 @@ TranslatorX64::translateVerifyParamType(const Tracelet& t,
       Class* constraint = NULL;
       VerifyParamTypeSlow(cls, constraint);
     }
-    EMIT_CALL2(a, VerifyParamTypeSlow, R(*inCls), R(*cls));
+    EMIT_CALL(a, VerifyParamTypeSlow, R(*inCls), R(*cls));
     // Pin the return value, check if a match or take slow path
     m_regMap.bind(rax, Location(), KindOfInvalid, RegInfo::SCRATCH);
     a.  test_reg64_reg64(rax, rax);
@@ -9122,7 +9633,7 @@ TranslatorX64::translateVerifyParamType(const Tracelet& t,
       if (false) { // typecheck
         VerifyParamTypeFail(param);
       }
-      EMIT_CALL1(astubs, VerifyParamTypeFail, IMM(param));
+      EMIT_CALL(astubs, VerifyParamTypeFail, IMM(param));
       recordReentrantStubCall(i);
     }
   }
@@ -9154,14 +9665,14 @@ TranslatorX64::translateInstanceOfD(const Tracelet& t,
 
   DynLocation* input0 = i.inputs[0];
   bool input0IsLoc = input0->isLocal();
-  DataType type = input0->outerType();
+  DataType type = input0->valueType();
   PhysReg srcReg = getReg(input0->location);
-  m_regMap.allocOutputRegs(i);
   ScratchReg result(m_regMap);
 
-  if (!input0->isObject()) {
+  if (type != KindOfObject) {
     // All non-object inputs are not instances
     if (!input0IsLoc && IS_REFCOUNTED_TYPE(type)) {
+      ASSERT(!input0->isVariant());
       emitDecRef(i, srcReg, type);
     }
     emitImmReg(a, false, *result);
@@ -9170,6 +9681,7 @@ TranslatorX64::translateInstanceOfD(const Tracelet& t,
     // Get the input's class from ObjectData->m_cls
     ScratchReg inCls(m_regMap);
     if (input0->rtt.isVariant()) {
+      ASSERT(input0IsLoc);
       emitDeref(a, srcReg, *inCls);
       a.  load_reg64_disp_reg64(*inCls, ObjectData::getVMClassOffset(), *inCls);
     } else {
@@ -9201,7 +9713,7 @@ TranslatorX64::translateInstanceOfD(const Tracelet& t,
         Class* constraint = NULL;
         InstanceOfDSlow(cls, constraint);
       }
-      EMIT_CALL2(astubs, InstanceOfDSlow, R(*inCls), R(*cls));
+      EMIT_CALL(astubs, InstanceOfDSlow, R(*inCls), R(*cls));
       astubs.  mov_reg32_reg32(rax, *result);
     }
   }
@@ -9221,7 +9733,7 @@ TranslatorX64::translateIterInit(const Tracelet& t,
   ASSERT(i.inputs.size() == 1);
   ASSERT(!i.outStack && !i.outLocal);
   DynLocation* arrIn = i.inputs[0];
-  ASSERT(arrIn->outerType() != KindOfVariant);
+  ASSERT(arrIn->outerType() != KindOfRef);
 
   PhysReg src = getReg(arrIn->location);
   SKTRACE(1, i.source, "IterInit: committed to translation\n");
@@ -9232,7 +9744,7 @@ TranslatorX64::translateIterInit(const Tracelet& t,
   PhysReg base;
   int offset;
   locToRegDisp(iterLoc, &base, &offset);
-  TRACE(2, "IterInit: iter %d -> base r%d, offset %d\n", iterLoc.offset,
+  TRACE(2, "IterInit: iter %lld -> base r%d, offset %d\n", iterLoc.offset,
       base, offset);
   if (false) { // typecheck
     Iter *dest = NULL;
@@ -9279,10 +9791,10 @@ TranslatorX64::translateIterValueC(const Tracelet& t,
   }
   if (i.outStack) {
     outLoc = i.outStack->location;
-    EMIT_CALL2(a, iter_value_cell, A(i.inputs[0]->location), A(outLoc));
+    EMIT_CALL(a, iter_value_cell, A(i.inputs[0]->location), A(outLoc));
   } else {
     outLoc = i.outLocal->location;
-    EMIT_CALL2(a, iter_value_cell_local, A(i.inputs[0]->location), A(outLoc));
+    EMIT_CALL(a, iter_value_cell_local, A(i.inputs[0]->location), A(outLoc));
   }
   recordReentrantCall(a, i);
   m_regMap.invalidate(outLoc);
@@ -9307,10 +9819,10 @@ TranslatorX64::translateIterKey(const Tracelet& t,
   }
   if (i.outStack) {
     outLoc = i.outStack->location;
-    EMIT_CALL2(a, iter_key_cell, A(i.inputs[0]->location), A(outLoc));
+    EMIT_CALL(a, iter_key_cell, A(i.inputs[0]->location), A(outLoc));
   } else {
     outLoc = i.outLocal->location;
-    EMIT_CALL2(a, iter_key_cell_local, A(i.inputs[0]->location), A(outLoc));
+    EMIT_CALL(a, iter_key_cell_local, A(i.inputs[0]->location), A(outLoc));
   }
   recordReentrantCall(a, i);
   m_regMap.invalidate(outLoc);
@@ -9337,7 +9849,7 @@ TranslatorX64::translateIterNext(const Tracelet& t,
   m_regMap.cleanAll(); // input might be in-flight
   // If the iterator reaches the end, iter_next_array will handle
   // freeing the iterator and it will decRef the array
-  EMIT_CALL1(a, iter_next_array, A(i.inputs[0]->location));
+  EMIT_CALL(a, iter_next_array, A(i.inputs[0]->location));
   recordReentrantCall(a, i);
   // RAX is now a scratch register with no progam meaning...
   m_regMap.bind(rax, Location(), KindOfInvalid, RegInfo::SCRATCH);
@@ -9439,85 +9951,139 @@ TranslatorX64::dontGuardAnyInputs(Opcode op) {
 
 }
 
-void
-TranslatorX64::emitVariantGuards(const Tracelet& t,
-                                 const NormalizedInstruction& i) {
-  TCA sideExit = NULL;
+void TranslatorX64::emitOneGuard(const Tracelet& t,
+                                 const NormalizedInstruction& i,
+                                 PhysReg reg, int disp, DataType type,
+                                 TCA &sideExit) {
   bool isFirstInstr = (&i == t.m_instrStream.first);
-  for (size_t in = 0; in < i.inputs.size(); ++in) {
-    if (!i.inputs[in]->canBeAliased()) continue;
-    if (i.inputs[in]->rtt.innerType() == KindOfInvalid) continue;
-
-    ASSERT(i.inputs[in]->isVariant());
-    m_regMap.allocInputRegs(i);
-    SKTRACE(1, i.source, "guarding variant inner: (%s:%d) :: %d!\n",
-            i.inputs[in]->location.spaceName(),
-            i.inputs[in]->location.offset,
-            i.inputs[in]->rtt.innerType());
-    // TODO task 1122807: don't check the inner type if we've already
-    // checked it and have executed no possibly-aliasing instructions in
-    // the meanwhile.
-    DataType innerType = i.inputs[in]->rtt.innerType();
-    PhysReg outerReg = getReg(i.inputs[in]->location);
-    if (IS_STRING_TYPE(innerType)) {
-      ScratchReg tmp(m_regMap);
-      emitStringCheck(a, outerReg, TVOFF(m_type), *tmp);
-    } else {
-      a.  cmp_imm32_disp_reg32(innerType, TVOFF(m_type), outerReg);
-    }
-    if (isFirstInstr) {
-      SrcRec& srcRec = *getSrcRec(t.m_sk);
-      // If it's the first instruction, we haven't made any forward
-      // progress yet, so this is really a tracelet-level guard rather
-      // than a side exit. If we tried to "side exit", we'd come right
-      // back to this check!
-      //
-      // We need to record this as a fallback branch.
-      emitFallbackJmp(srcRec);
-      continue;
-    }
-    if (!sideExit) {
-      UnlikelyIfBlock<CC_NZ> branchToSideExit(a, astubs);
-      sideExit = astubs.code.frontier;
-      emitSideExit(astubs, i, false /*next*/);
-      continue;
-    }
+  emitTypeCheck(a, type, reg, disp);
+  if (isFirstInstr) {
+    SrcRec& srcRec = *getSrcRec(t.m_sk);
+    // If it's the first instruction, we haven't made any forward
+    // progress yet, so this is really a tracelet-level guard rather
+    // than a side exit. If we tried to "side exit", we'd come right
+    // back to this check!
+    //
+    // We need to record this as a fallback branch.
+    emitFallbackJmp(srcRec);
+  } else if (!sideExit) {
+    UnlikelyIfBlock<CC_NZ> branchToSideExit(a, astubs);
+    sideExit = astubs.code.frontier;
+    emitSideExit(astubs, i, false /*next*/);
+  } else {
     a.    jnz(sideExit);
   }
 }
 
-bool
-NormalizedInstruction::outStackIsUsed() const {
+void
+TranslatorX64::emitVariantGuards(const Tracelet& t,
+                                 const NormalizedInstruction& i) {
+  bool pseudoMain = Translator::liveFrameIsPseudoMain();
+  TCA sideExit = NULL;
+  const NormalizedInstruction *base = &i;
+  while (base->grouped) {
+    base = base->prev;
+    ASSERT(base);
+  }
+  for (size_t in = 0; in < i.inputs.size(); ++in) {
+    DynLocation* input = i.inputs[in];
+    if (!input->isValue()) continue;
+    bool isRef = input->isVariant() &&
+      !i.ignoreInnerType &&
+      input->rtt.innerType() != KindOfInvalid;
+    bool modifiableLocal = pseudoMain && input->isLocal() &&
+      !input->rtt.isVagueValue();
+
+    if (!modifiableLocal && !isRef) continue;
+
+    SKTRACE(1, i.source, "guarding %s: (%s:%d) :: %d!\n",
+            modifiableLocal ? "pseudoMain local" : "variant inner",
+            input->location.spaceName(),
+            input->location.offset,
+            input->rtt.valueType());
+    // TODO task 1122807: don't check the inner type if we've already
+    // checked it and have executed no possibly-aliasing instructions in
+    // the meanwhile.
+    if (modifiableLocal) {
+      PhysReg reg;
+      int disp;
+      locToRegDisp(input->location, &reg, &disp);
+      emitOneGuard(t, *base, reg, disp,
+                   input->rtt.outerType(), sideExit);
+    }
+    if (isRef) {
+      m_regMap.allocInputReg(i, in);
+      emitOneGuard(t, *base, getReg(input->location), 0,
+                   input->rtt.innerType(), sideExit);
+    }
+  }
+}
+
+NormalizedInstruction::OutputUse
+NormalizedInstruction::outputIsUsed(DynLocation* output) const {
   for (NormalizedInstruction* succ = next;
        succ; succ = succ->next) {
     for (size_t i = 0; i < succ->inputs.size(); ++i) {
-      if (succ->inputs[i] == outStack) return true;
+      if (succ->inputs[i] == output) {
+        if (succ->inputWasInferred(i)) {
+          return OutputInferred;
+        }
+        if (Translator::Get()->dontGuardAnyInputs(succ->op())) {
+          /* the consumer doesnt care about its inputs
+             but we may still have inferred something about
+             its outputs that a later instruction may depend on
+          */
+          if (!outputDependsOnInput(succ->op()) ||
+              !(succ->outStack && !succ->outStack->rtt.isVagueValue() &&
+                succ->outputIsUsed(succ->outStack) != OutputUsed) ||
+              !(succ->outLocal && !succ->outLocal->rtt.isVagueValue() &&
+                succ->outputIsUsed(succ->outLocal)) != OutputUsed) {
+            return OutputDoesntCare;
+          }
+        }
+        return OutputUsed;
+      }
     }
   }
-  return false;
+  return OutputUnused;
 }
 
 void
 TranslatorX64::emitPredictionGuards(const NormalizedInstruction& i) {
-  if (!i.outputPredicted || i.breaksBB || !i.outStackIsUsed())
-    return;
+  if (!i.outputPredicted || i.breaksBB) return;
+  NormalizedInstruction::OutputUse u = i.outputIsUsed(i.outStack);
+  switch (u) {
+    case NormalizedInstruction::OutputUsed:
+      break;
+    case NormalizedInstruction::OutputUnused:
+      return;
+    case NormalizedInstruction::OutputInferred:
+      Stats::emitInc(a, Stats::TC_TypePredOverridden);
+      return;
+    case NormalizedInstruction::OutputDoesntCare:
+      Stats::emitInc(a, Stats::TC_TypePredUnneeded);
+      return;
+  }
 
   ASSERT(i.outStack);
   PhysReg base;
   int disp;
   locToRegDisp(i.outStack->location, &base, &disp);
-  int off = disp + TVOFF(m_type);
   ASSERT(base == rVmSp);
-  TRACE(1, "PREDGUARD: %p dt %d offset %d voffset %d\n",
-        a.code.frontier, i.outStack->outerType(), off,
+  TRACE(1, "PREDGUARD: %p dt %d offset %d voffset %lld\n",
+        a.code.frontier, i.outStack->outerType(), disp,
         i.outStack->location.offset);
-  a.  cmp_imm32_disp_reg32(i.outStack->outerType(), off, rVmSp);
+  emitTypeCheck(a, i.outStack->outerType(), rVmSp, disp);
   {
     UnlikelyIfBlock<CC_NZ> branchToSideExit(a, astubs);
     Stats::emitInc(astubs, Stats::TC_TypePredMiss);
     emitSideExit(astubs, i, true);
   }
   Stats::emitInc(a, Stats::TC_TypePredHit);
+}
+
+static void failedTypePred() {
+  raise_error("A type prediction was incorrect");
 }
 
 void
@@ -9554,13 +10120,41 @@ TranslatorX64::translateInstr(const Tracelet& t,
   TCA start = a.code.frontier;
   TCA astart = astubs.code.frontier;
   m_regMap.bumpEpoch();
+
+  if (debug) {
+    for (unsigned j = 0; j < i.inputs.size(); j++) {
+      if (i.inputWasInferred(j)) {
+        DynLocation* dl = i.inputs[j];
+        ASSERT(dl->rtt.isValue() &&
+               !dl->rtt.isVagueValue() &&
+               dl->outerType() != KindOfInvalid);
+        PhysReg base;
+        int disp;
+        locToRegDisp(dl->location, &base, &disp);
+        emitTypeCheck(a, dl->rtt.typeCheckValue(), base, disp);
+        {
+          UnlikelyIfBlock<CC_NZ> typePredFailed(a, astubs);
+          EMIT_CALL(astubs, failedTypePred);
+          recordReentrantStubCall(i);
+        }
+      }
+    }
+  }
+
+  if (!i.grouped) {
+    emitVariantGuards(t, i);
+    const NormalizedInstruction* n = &i;
+    while (n->next && n->next->grouped) {
+      n = n->next;
+      emitVariantGuards(t, *n);
+    }
+  }
+
   // Allocate the input regs upfront unless instructed otherwise
   // or the instruction is interpreted
   if (!i.manuallyAllocInputs && i.m_txFlags) {
     m_regMap.allocInputRegs(i);
   }
-
-  emitVariantGuards(t, i);
 
   if (i.m_txFlags == Interp || RuntimeOption::EvalThreadingJit) {
     // If the problem is local to this instruction, just call out to
@@ -9592,10 +10186,8 @@ TranslatorX64::translateInstr(const Tracelet& t,
   }
 
   emitPredictionGuards(i);
-  Debug::recordBCInstr(op, start, a.code.frontier);
-  if (astubs.code.frontier != astart) {
-    Debug::recordBCInstr(op + Op_count, astart, astubs.code.frontier);
-  }
+  recordBCInstr(op, a, start);
+  recordBCInstr(op + Op_count, astubs, astart);
 
   if (i.breaksBB && !i.changesPC) {
     // If this instruction's opcode always ends the tracelet then the
@@ -9610,6 +10202,7 @@ bool
 TranslatorX64::checkTranslationLimit(const SrcKey& sk,
                                      const SrcRec& srcRec) const {
   if (srcRec.translations().size() == SrcRec::kMaxTranslations) {
+    INC_TPC(max_trans);
     if (debug && Trace::moduleEnabled(Trace::tx64, 2)) {
       const vector<TCA>& tns = srcRec.translations();
       TRACE(1, "Too many (%ld) translations: %s, BC offset %d\n",
@@ -9652,11 +10245,20 @@ TranslatorX64::emitGuardChecks(X64Assembler& a,
     Stats::emitInc(a, Stats::TraceletGuard_enter);
   }
 
+  bool pseudoMain = Translator::liveFrameIsPseudoMain();
+
   emitRB(a, RBTypeTraceletGuards, sk);
   for (DepMap::const_iterator dep = dependencies.begin();
        dep != dependencies.end();
        ++dep) {
-    checkType(a, dep->first, dep->second->rtt, fail);
+    if (!pseudoMain || !dep->second->isLocal() || !dep->second->isValue()) {
+      checkType(a, dep->first, dep->second->rtt, fail);
+    } else {
+      TRACE(3, "Skipping tracelet guard for %d:%d %d\n",
+            (int)dep->second->location.space,
+            (int)dep->second->location.offset,
+            (int)dep->second->rtt.outerType());
+    }
   }
 
   checkRefs(a, sk, refDeps, fail);
@@ -9743,9 +10345,7 @@ TranslatorX64::translateTracelet(const Tracelet& t) {
 
     emitRB(a, RBTypeTraceletBody, t.m_sk);
     Stats::emitInc(a, Stats::Instr_TC, t.m_numOpcodes);
-    if (a.code.frontier != start) {
-      Debug::recordBCInstr(OpTraceletGuard, start, a.code.frontier);
-    }
+    recordBCInstr(OpTraceletGuard, a, start);
 
     // Translate each instruction in the tracelet
     for (NormalizedInstruction* ni = t.m_instrStream.first; ni; ni = ni->next) {
@@ -9794,12 +10394,10 @@ TranslatorX64::translateTracelet(const Tracelet& t) {
                           a.code.frontier - start, stubStart,
                           astubs.code.frontier - stubStart, bcMapping));
 
-  recordGdbTranslation(sk, curUnit(), start, a.code.frontier - start,
+  recordGdbTranslation(sk, curUnit(), a, start,
                        false, false);
-  if (astubs.code.frontier != stubStart) {
-    recordGdbTranslation(sk, curUnit(), stubStart,
-                         astubs.code.frontier - stubStart, false, false);
-  }
+  recordGdbTranslation(sk, curUnit(), astubs, stubStart,
+                       false, false);
   // SrcRec::newTranslation() makes this code reachable. Do this last;
   // otherwise there's some chance of hitting in the reader threads whose
   // metadata is not yet visible.
@@ -9812,28 +10410,175 @@ TranslatorX64::translateTracelet(const Tracelet& t) {
   }
 }
 
+static const size_t kASize = 512 << 20;
+static const size_t kAStubsSize = 512 << 20;
+static const size_t kGDataSize = kASize / 4;
+static const size_t kTotalSize = kASize + kAStubsSize +
+                                         kTrampolinesBlockSize + kGDataSize;
+
 TranslatorX64::TranslatorX64()
 : Translator(),
   m_numNativeTrampolines(0),
   m_trampolineSize(0),
   m_spillFillCode(&a),
   m_interceptHelper(0),
-  m_requireHelper(0),
-  m_toStringReturnHelper(0),
   m_defClsHelper(0),
   m_funcPrologueRedispatch(0),
   m_regMap(kCallerSaved, kCalleeSaved, this),
-  m_interceptsEnabled(false)
+  m_interceptsEnabled(false),
+  m_unwindRegMap(128)
 {
   TRACE(1, "TranslatorX64@%p startup\n", this);
+  tx64 = this;
+
+  static_assert(kTotalSize < (2ul << 30),
+                "Combined size of all code/data blocks in TranslatorX64 "
+                "must be < 2GiB to support 32-bit relative addresses");
+
+  static bool profileUp = false;
+  if (!profileUp) {
+    profileInit();
+    profileUp = true;
+  }
+
+  // We want to ensure that the block for "a", "astubs",
+  // "atrampolines", and "m_globalData" are nearby so that we can
+  // short jump/point between them. Thus we allocate one slab and
+  // divide it between "a", "astubs", and "atrampolines".
+  uint8_t *base = allocSlab(kTotalSize);
+  atrampolines.init(base, kTrampolinesBlockSize);
+  base += kTrampolinesBlockSize;
+  a.init(base, kASize);
+  m_unwindRegistrar = register_unwind_region(base, kTotalSize);
+  base += kASize;
+  astubs.init(base, kAStubsSize);
+  base += kAStubsSize;
+  m_globalData.init(base, kGDataSize);
+
+  // Emit some special helpers that are shared across translations.
+
+  // Emit a byte of padding. This is a kind of hacky way to
+  // avoid hitting an assert in recordGdbStub when we call
+  // it with m_callToExit - 1 as the start address.
+  astubs.emitNop(1);
+
+  // Call to exit with whatever value the program leaves on
+  // the return stack.
+  m_callToExit = emitServiceReq(false, REQ_EXIT, 0ull);
+
+  m_retHelper = emitRetFromInterpretedFrame();
+
+  moveToAlign(astubs);
+  m_resumeHelper = astubs.code.frontier;
+  emitGetGContext(astubs, rax);
+  astubs.   load_reg64_disp_reg64(rax, offsetof(VMExecutionContext, m_fp),
+                                       rVmFp);
+  astubs.   load_reg64_disp_reg64(rax, offsetof(VMExecutionContext, m_stack) +
+                                       Stack::topOfStackOffset(), rVmSp);
+  emitServiceReq(false, REQ_RESUME, 0ull);
+
+  // Helper for DefCls
+  if (false) {
+    PreClass *preClass = 0;
+    defClsHelper(preClass);
+  }
+  m_defClsHelper = TCA(a.code.frontier);
+  PhysReg rEC = argNumToRegName[2];
+  emitGetGContext(a, rEC);
+  a.   store_reg64_disp_reg64(rVmFp, offsetof(VMExecutionContext, m_fp), rEC);
+  a.   store_reg64_disp_reg64(argNumToRegName[1],
+                              offsetof(VMExecutionContext, m_pc), rEC);
+  // rax holds the up-to-date top of stack pointer
+  a.   store_reg64_disp_reg64(rax,
+                              offsetof(VMExecutionContext, m_stack) +
+                              Stack::topOfStackOffset(), rEC);
+  a.   jmp((TCA)defClsHelper);
+
+  moveToAlign(astubs);
+  m_stackOverflowHelper = astubs.code.frontier;
+  // We are called from emitStackCheck, with the new stack frame in
+  // rStashedAR. Get the caller's PC into rdi and save it off.
+  astubs.    load_reg64_disp_reg64(rVmFp, AROFF(m_func), rax);
+  astubs.    load_reg64_disp_reg32(rStashedAR, AROFF(m_soff), rdi);
+  astubs.    load_reg64_disp_reg64(rax, Func::sharedOffset(), rax);
+  astubs.    load_reg64_disp_reg32(rax, Func::sharedBaseOffset(), rax);
+  astubs.    add_reg32_reg32(rax, rdi);
+
+  emitEagerVMRegSave(astubs, SaveFP | SavePC);
+  emitServiceReq(false, REQ_STACK_OVERFLOW, 0ull);
+
+  // The decRef helper for when we bring the count down to zero. Callee needs to
+  // bring the value into rdi. These can be burned in for all time, and for all
+  // translations.
+  if (false) { // type-check
+    StringData* str = NULL;
+    ArrayData* arr = NULL;
+    ObjectData* obj = NULL;
+    RefData* ref = NULL;
+    tv_release_str(str);
+    tv_release_arr(arr);
+    tv_release_obj(obj);
+    tv_release_ref(ref);
+  }
+  typedef void* vp;
+  m_dtorStubs[BitwiseKindOfString] = emitUnaryStub(a, vp(tv_release_str));
+  m_dtorStubs[KindOfArray]         = emitUnaryStub(a, vp(tv_release_arr));
+  m_dtorStubs[KindOfObject]        = emitUnaryStub(a, vp(tv_release_obj));
+  m_dtorStubs[KindOfRef]           = emitUnaryStub(a, vp(tv_release_ref));
+  m_dtorGenericStub                = genericRefCountStub(a);
+  m_typedDtorStub                  = emitBinaryStub(a, vp(tv_release_typed));
+
+  if (trustSigSegv) {
+    // Install SIGSEGV handler for timeout exceptions
+    struct sigaction sa;
+    struct sigaction old_sa;
+    sa.sa_sigaction = &TranslatorX64::SEGVHandler;
+    sa.sa_flags = SA_SIGINFO;
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGSEGV, &sa, &old_sa) != 0) {
+      throw std::runtime_error(
+        std::string("Failed to install SIGSEGV handler: ") +
+          strerror(errno));
+    }
+    m_segvChain = old_sa.sa_flags & SA_SIGINFO ?
+      old_sa.sa_sigaction : (sigaction_t)old_sa.sa_handler;
+  }
+}
+
+// do gdb specific initialization. This has to happen after
+// the TranslatorX64 constructor is called, because gdb initialization
+// calls backs into TranslatorX64::Get()
+void TranslatorX64::initGdb() {
+  // On a backtrace, gdb tries to locate the calling frame at address
+  // returnRIP-1. However, for the first VM frame, there is no code at
+  // returnRIP-1, since the AR was set up manually. For this frame,
+  // record the tracelet address as starting from callToExit-1, so gdb
+  // does not barf
+  recordGdbStub(astubs, m_callToExit - 1, "HHVM::callToExit");
+
+  recordBCInstr(OpRetFromInterp, astubs, m_retHelper);
+  recordGdbStub(astubs, m_retHelper - 1, "HHVM::retHelper");
+  recordBCInstr(OpResumeHelper, astubs, m_resumeHelper);
+  recordBCInstr(OpDefClsHelper, a, m_defClsHelper);
+  recordBCInstr(OpDtorStub, a, m_dtorStubs[BitwiseKindOfString]);
+  recordGdbStub(a, m_dtorStubs[BitwiseKindOfString],
+                    "HHVM::destructorStub");
 }
 
 TranslatorX64*
 TranslatorX64::Get() {
-  if (!tx64) {
-    tx64 = new TranslatorX64();
-    transl = tx64;
+  /*
+   * Called from outrageously early, pre-main code, and will
+   * allocate the first translator space.
+   */
+  if (!nextTx64) {
+    nextTx64 = new TranslatorX64();
+    nextTx64->initGdb();
   }
+  if (!tx64) {
+    tx64 = nextTx64;
+  }
+  ASSERT(tx64);
   return tx64;
 }
 
@@ -9894,6 +10639,11 @@ TCA TranslatorX64::emitBinaryStub(X64Assembler& a, void* fptr) {
   return emitNAryStub<2>(a, fptr);
 }
 
+/*
+ * Both callUnaryStubImpl and callBinaryStub assume that the stub they
+ * are calling cannot throw an exception.
+ */
+
 template <bool reentrant>
 void
 TranslatorX64::callUnaryStubImpl(X64Assembler& a,
@@ -9911,6 +10661,34 @@ TranslatorX64::callUnaryStubImpl(X64Assembler& a,
   recordCallImpl<reentrant>(a, i);
   a.    popr(rdi);
 }
+
+void
+TranslatorX64::callBinaryStub(X64Assembler& a, const NormalizedInstruction& i,
+                              TCA stub, PhysReg arg1, PhysReg arg2) {
+  a.    pushr(rdi);
+  a.    pushr(rsi);
+
+  // We need to be careful not to clobber our arguments when moving
+  // them into the appropriate registers.  (If we ever need ternary
+  // stubs, this should probably be converted to use ArgManager.)
+  if (arg2 == rdi && arg1 == rsi) {
+    a.  xchg_reg64_reg64(rdi, rsi);
+  } else if (arg2 == rdi) {
+    emitMovRegReg(a, arg2, rsi);
+    emitMovRegReg(a, arg1, rdi);
+  } else {
+    emitMovRegReg(a, arg1, rdi);
+    emitMovRegReg(a, arg2, rsi);
+  }
+
+  ASSERT(isValidCodeAddress(stub));
+  emitCall(a, stub);
+  recordReentrantCall(a, i);
+  a.    popr(rsi);
+  a.    popr(rdi);
+}
+
+namespace {
 
 struct DeferredFileInvalidate : public DeferredWorkItem {
   Eval::PhpFile* m_f;
@@ -9945,30 +10723,6 @@ struct DeferredPathInvalidate : public DeferredWorkItem {
   }
 };
 
-void
-TranslatorX64::callBinaryStub(X64Assembler& a, const NormalizedInstruction& i,
-                              TCA stub, PhysReg arg1, PhysReg arg2) {
-  a.    pushr(rdi);
-  a.    pushr(rsi);
-
-  // We need to be careful not to clobber our arguments when moving
-  // them into the appropriate registers.  (If we ever need ternary
-  // stubs, this should probably be converted to use ArgManager.)
-  if (arg2 == rdi && arg1 == rsi) {
-    a.  xchg_reg64_reg64(rdi, rsi);
-  } else if (arg2 == rdi) {
-    emitMovRegReg(a, arg2, rsi);
-    emitMovRegReg(a, arg1, rdi);
-  } else {
-    emitMovRegReg(a, arg1, rdi);
-    emitMovRegReg(a, arg2, rsi);
-  }
-
-  ASSERT(isValidCodeAddress(stub));
-  emitCall(a, stub);
-  recordReentrantCall(a, i);
-  a.    popr(rsi);
-  a.    popr(rdi);
 }
 
 void
@@ -9977,215 +10731,95 @@ TranslatorX64::requestInit() {
   tl_regState = REGSTATE_CLEAN;
   PendQ::drain();
   requestResetHighLevelTranslator();
-  TargetCache::requestInit();
   Treadmill::startRequest(g_vmContext->m_currentThreadIdx);
+  memset(&s_perfCounters, 0, sizeof(s_perfCounters));
 }
 
 void
 TranslatorX64::requestExit() {
-  if (m_writeLease.amOwner()) {
-    m_writeLease.drop();
+  if (s_writeLease.amOwner()) {
+    s_writeLease.drop();
   }
   TRACE_MOD(txlease, 2, "%lx write lease stats: %15lld kept, %15lld grabbed\n",
-            pthread_self(), m_writeLease.m_hintKept,
-            m_writeLease.m_hintGrabbed);
+            pthread_self(), s_writeLease.m_hintKept,
+            s_writeLease.m_hintGrabbed);
   PendQ::drain();
   Treadmill::finishRequest(g_vmContext->m_currentThreadIdx);
   TRACE(1, "done requestExit(%ld)\n", g_vmContext->m_currentThreadIdx);
   Stats::dump();
   Stats::clear();
+
+  if (Trace::moduleEnabledRelease(Trace::tx64stats, 1)) {
+    Trace::traceRelease("TranslatorX64 perf counters for %s:\n",
+                        g_context->getRequestUrl(50).c_str());
+    for (int i = 0; i < tpc_num_counters; i++) {
+      Trace::traceRelease("%-20s %10lld\n",
+                          kPerfCounterNames[i], s_perfCounters[i]);
+    }
+    Trace::traceRelease("\n");
+  }
 }
 
-void TranslatorX64::processInit() {
-  static const size_t aSize = 512 << 20;
-  static const size_t astubsSize = 512 << 20;
-  static const size_t trampolinesSize = kTrampolinesBlockSize;
-  
-  profileInit();
-
-  // We want to ensure that the block for "a", "astubs", and "atrampolines" are
-  // nearby so that we can short jump between them. Thus we allocate one slab
-  // and divide it between "a", "astubs", and "atrampolines".
-  uint8_t *base = allocSlab(aSize + astubsSize + trampolinesSize);
-  atrampolines.init(base,trampolinesSize);
-  a.init(base + trampolinesSize, aSize);
-  astubs.init(base + trampolinesSize + aSize, astubsSize);
-
-  m_globalData.size = aSize; // SWAG at data size
-  m_globalData.init();
-
-  // Emit some special helpers that are shared across translations.
-
-  // Call to exit with whatever value the program leaves on
-  // the return stack.
-  m_callToExit = emitServiceReq(REQ_EXIT, 0ull);
-
-  // On a backtrace, gdb tries to locate the calling frame at address
-  // returnRIP-1. However, for the first VM frame, there is no code at
-  // returnRIP-1, since the AR was set up manually. For this frame,
-  // record the tracelet address as starting from callToExit-1, so gdb
-  // does not barf
-  recordGdbStub(m_callToExit - 1, astubs.code.frontier, "HHVM::callToExit");
-
-  m_retHelper = emitRetFromInterpretedFrame();
-  Debug::recordBCInstr(OpRetFromInterp, m_retHelper, astubs.code.frontier);
-  recordGdbStub(m_retHelper - 1, astubs.code.frontier, "HHVM::retHelper");
-
-  moveToAlign(astubs);
-  m_resumeHelper = astubs.code.frontier;
-  emitGetGContext(astubs, rax);
-  astubs.   load_reg64_disp_reg64(rax, offsetof(VMExecutionContext, m_fp),
-                                       rVmFp);
-  astubs.   load_reg64_disp_reg64(rax, offsetof(VMExecutionContext, m_stack) +
-                                       Stack::topOfStackOffset(), rVmSp);
-  emitServiceReq(false, REQ_RESUME, 0ull);
-  Debug::recordBCInstr(OpResumeHelper, m_resumeHelper, astubs.code.frontier);
-
-  {
-    /*
-       Helper for literal require.
-
-       On entry:
-         - the return address is a stub that will branch
-           to the pseudoMain of the unit;
-         - arg 0 is the address of a pre-filled ReqLitStaticArgs.
-
-       This stub passes its arguments, and fp and sp to
-       reqLitHelper which checks to see if the require
-       is needed, then calls evalUnit.
-       reqLitHelper will return the ExecutionContext, with
-       bit zero set if the pseudoMain does not need to be
-       executed.
-       */
-    m_requireHelper = TCA(a.code.frontier);
-    PhysReg rFallthrough = r13;
-    PhysReg rDest = r15;
-    a.   popr(rDest); // By default, continue into the body.
-    if (false) { // typecheck
-      ReqLitStaticArgs* a = NULL;
-      Cell *fp = NULL;
-      Cell *sp = NULL;
-      UNUSED uint64 ret = reqLitHelper(a, fp, sp);
+bool
+TranslatorX64::isPseudoEvent(const char* event) {
+  for (int i = 0; i < tpc_num_counters; i++) {
+    if (!strcmp(event, kPerfCounterNames[i])) {
+      return true;
     }
-    a.   load_reg64_disp_reg64(argNumToRegName[0],
-                               offsetof(ReqLitStaticArgs, m_fallthrough), r13);
-    a.   mov_reg64_reg64(rVmFp, argNumToRegName[1]);
-    a.   mov_reg64_reg64(rVmSp, argNumToRegName[2]);
-    a.   call((TCA)TranslatorX64::reqLitHelper);
-    a.   test_imm32_reg64(1, rax);
-    {
-      JccBlock<CC_Z> ifSkip(a);
-      // pseudoMain does not need to be executed, so
-      // clear the bottom bit of rax to recover the EC
-      a. sub_imm32_reg64(1, rax);
-      // and move the post-pseudoMain address into rDest
-      a. mov_reg64_reg64(rFallthrough, rDest);
-    }
-    // copy fp and sp back from the EC.
-    a.   load_reg64_disp_reg64(rax, offsetof(VMExecutionContext, m_fp), rVmFp);
-    a.   load_reg64_disp_reg64(rax, offsetof(VMExecutionContext, m_stack) +
-                               Stack::topOfStackOffset(), rVmSp);
-    a.   jmp_reg(rDest);
-    Debug::recordBCInstr(OpRequireHelper, m_requireHelper, a.code.frontier);
   }
+  return false;
+}
 
-  {
-    // Helper for return from non-instance toString
-    m_toStringReturnHelper = TCA(a.code.frontier);
-    a.   load_reg64_disp_reg64(rVmSp, AROFF(m_savedRip), rax);
-    a.   add_imm32_reg64(cellsToBytes(kNumActRecCells - 1), rVmSp);
-    a.   jmp_reg(rax);
+void
+TranslatorX64::getPerfCounters(Array& ret) {
+  for (int i = 0; i < tpc_num_counters; i++) {
+    // Until Perflab can automatically scale the values we give it to
+    // an appropriate range, we have to fudge these numbers so they
+    // look more like reasonable hardware counter values.
+    ret.set(kPerfCounterNames[i], s_perfCounters[i] * 1000);
   }
+}
 
-  // Helper for DefCls
-  if (false) {
-    PreClass *preClass = 0;
-    defClsHelper(preClass);
-  }
-  m_defClsHelper = TCA(a.code.frontier);
-  PhysReg rEC = argNumToRegName[2];
-  emitGetGContext(a, rEC);
-  a.   store_reg64_disp_reg64(rVmFp, offsetof(VMExecutionContext, m_fp), rEC);
-  a.   store_reg64_disp_reg64(argNumToRegName[1],
-                              offsetof(VMExecutionContext, m_pc), rEC);
-  // rax holds the up-to-date top of stack pointer
-  a.   store_reg64_disp_reg64(rax,
-                              offsetof(VMExecutionContext, m_stack) +
-                              Stack::topOfStackOffset(), rEC);
-  a.   jmp((TCA)defClsHelper);
-  Debug::recordBCInstr(OpDefClsHelper, m_defClsHelper, a.code.frontier);
+TranslatorX64::~TranslatorX64() {
+  freeSlab(atrampolines.code.base, kTotalSize);
+}
 
-  moveToAlign(astubs);
-  m_stackOverflowHelper = astubs.code.frontier;
-  // We are called from emitStackCheck, with the new stack frame in
-  // rStashedAR. Get the caller's PC into rdi and save it off.
-  astubs.    load_reg64_disp_reg64(rVmFp, AROFF(m_func), rax);
-  astubs.    load_reg64_disp_reg32(rStashedAR, AROFF(m_soff), rdi);
-  astubs.    load_reg64_disp_reg64(rax, Func::sharedOffset(), rax);
-  astubs.    load_reg64_disp_reg32(rax, Func::sharedBaseOffset(), rax);
-  astubs.    add_reg32_reg32(rax, rdi);
+static Debug::TCRange rangeFrom(const X64Assembler& a, const TCA addr,
+                                bool isAstubs) {
+  ASSERT(a.code.isValidAddress(addr));
+  return Debug::TCRange(addr, a.code.frontier, isAstubs);
+}
 
-  emitEagerVMRegSave(astubs, SaveFP | SavePC);
-  emitServiceReq(false, REQ_STACK_OVERFLOW, 0ull);
-
-  // The decRef helper for when we bring the count down to zero. Callee needs to
-  // bring the value into rdi. These can be burned in for all time, and for all
-  // translations.
-  if (false) { // type-check
-    StringData* str = NULL;
-    ArrayData* arr = NULL;
-    ObjectData* obj = NULL;
-    Variant* var = NULL;
-    tv_release_str(str);
-    tv_release_arr(arr);
-    tv_release_obj(obj);
-    tv_release_var(var);
-  }
-  typedef void* vp;
-  m_dtorStubs[BitwiseKindOfString] = emitUnaryStub(a, vp(tv_release_str));
-  m_dtorStubs[KindOfArray]         = emitUnaryStub(a, vp(tv_release_arr));
-  m_dtorStubs[KindOfObject]        = emitUnaryStub(a, vp(tv_release_obj));
-  m_dtorStubs[KindOfVariant]       = emitUnaryStub(a, vp(tv_release_var));
-  m_dtorGenericStub                = genericRefCountStub(a);
-  m_typedDtorStub                  = emitBinaryStub(a, vp(tv_release_typed));
-  Debug::recordBCInstr(OpDtorStub, m_dtorStubs[BitwiseKindOfString],
-                       a.code.frontier);
-  recordGdbStub(m_dtorStubs[BitwiseKindOfString], a.code.frontier,
-                    "HHVM::destructorStub");
-
-  if (trustSigSegv) {
-    // Install SIGSEGV handler for timeout exceptions
-    struct sigaction sa;
-    struct sigaction old_sa;
-    sa.sa_sigaction = &TranslatorX64::SEGVHandler;
-    sa.sa_flags = SA_SIGINFO;
-    sigemptyset(&sa.sa_mask);
-    if (sigaction(SIGSEGV, &sa, &old_sa) != 0) {
-      throw std::runtime_error(
-        std::string("Failed to install SIGSEGV handler: ") +
-          strerror(errno));
-    }
-    m_segvChain = old_sa.sa_flags & SA_SIGINFO ?
-      old_sa.sa_sigaction : (sigaction_t)old_sa.sa_handler;
+void TranslatorX64::recordBCInstr(uint32_t op,
+                                  const X64Assembler& a,
+                                  const TCA addr) {
+  if (addr != a.code.frontier) {
+    m_debugInfo.recordBCInstr(Debug::TCRange(addr, a.code.frontier,
+                                             &a == &astubs ? true : false), op);
   }
 }
 
 void TranslatorX64::recordGdbTranslation(const SrcKey& sk,
                                          const Unit* srcUnit,
-                                         TCA start,
-                                         int numTCBytes, bool exit,
+                                         const X64Assembler& a,
+                                         const TCA start,
+                                         bool exit,
                                          bool inPrologue) {
-  if (!RuntimeOption::EvalJitNoGdb) {
-    ASSERT(m_writeLease.amOwner());
-    m_debugInfo.recordTracelet(start, start + numTCBytes, srcUnit,
+  if (start != a.code.frontier && !RuntimeOption::EvalJitNoGdb) {
+    ASSERT(s_writeLease.amOwner());
+    m_debugInfo.recordTracelet(rangeFrom(a, start,
+                                         &a == &astubs ? true : false),
+                               srcUnit,
                                srcUnit->at(sk.offset()),
                                exit, inPrologue);
   }
 }
 
-void TranslatorX64::recordGdbStub(TCA start, TCA end, const char* name) {
+void TranslatorX64::recordGdbStub(const X64Assembler& a,
+                                  const TCA start, const char* name) {
   if (!RuntimeOption::EvalJitNoGdb) {
-    m_debugInfo.recordStub(start, end, name);
+    m_debugInfo.recordStub(rangeFrom(a, start, &a == &astubs ? true : false),
+                           name);
   }
 }
 
@@ -10212,7 +10846,7 @@ std::string TranslatorX64::getUsage() {
 bool TranslatorX64::addDbgGuards(const Unit* unit) {
   // TODO refactor
   // It grabs the write lease and iterating through whole SrcDB...
-  bool locked = m_writeLease.acquire(true);
+  bool locked = s_writeLease.acquire(true);
   if (!locked) {
     return false;
   }
@@ -10229,7 +10863,7 @@ bool TranslatorX64::addDbgGuards(const Unit* unit) {
       addDbgGuardImpl(sk, sr);
     }
   }
-  m_writeLease.drop();
+  s_writeLease.drop();
   gettime(CLOCK_MONOTONIC, &tsEnd);
   int64 elapsed = gettime_diff_us(tsBegin, tsEnd);
   if (Trace::moduleEnabledRelease(Trace::tx64, 5)) {
@@ -10256,7 +10890,7 @@ bool TranslatorX64::addDbgGuard(const Func* func, Offset offset) {
       return false;
     }
   }
-  bool locked = m_writeLease.acquire(true);
+  bool locked = s_writeLease.acquire(true);
   if (!locked) {
     return false;
   }
@@ -10265,7 +10899,7 @@ bool TranslatorX64::addDbgGuard(const Func* func, Offset offset) {
       addDbgGuardImpl(sk, *sr);
     }
   }
-  m_writeLease.drop();
+  s_writeLease.drop();
   return true;
 }
 
@@ -10338,12 +10972,12 @@ bool TranslatorX64::dumpTCCode(const char* filename) {
 
 // Returns true on success
 bool TranslatorX64::dumpTC() {
-  if (!m_writeLease.acquire(true)) return false;
+  if (!s_writeLease.acquire(true)) return false;
   bool success = dumpTCData();
   if (success) {
     success = dumpTCCode("/tmp/tc_dump");
   }
-  m_writeLease.drop();
+  s_writeLease.drop();
   return success;
 }
 
@@ -10404,7 +11038,6 @@ bool TranslatorX64::dumpTCData() {
   NATIVE_OP(ContDone) \
   NATIVE_OP(ContValid) \
   NATIVE_OP(ContStopped) \
-  NATIVE_OP(Switch) \
   /*
    * Invariably call a possibly-reentrant helper.
    */ \
@@ -10454,16 +11087,11 @@ SUPPORTED_OPS()
 
 void TranslatorX64::invalidateSrcKey(const SrcKey& sk) {
   ASSERT(!RuntimeOption::RepoAuthoritative);
-  ASSERT(m_writeLease.amOwner());
+  ASSERT(s_writeLease.amOwner());
   /*
    * Reroute existing translations for SrcKey to an as-yet indeterminate
    * new one.
-   *
-   * XXX/TODO: we don't really need to re-emit an anchor translation
-   * here.  We could just use the old one and smash all the jumps back
-   * to it.
    */
-  TCA newDest = emitServiceReq(REQ_RETRANSLATE, 1, uint64_t(sk.offset()));
   SrcRec* sr = m_srcDB.find(sk);
   ASSERT(sr);
   /*
@@ -10471,7 +11099,7 @@ void TranslatorX64::invalidateSrcKey(const SrcKey& sk) {
    * just created some garbage in the TC. We currently have no mechanism
    * to reclaim this.
    */
-  sr->replaceOldTranslations(a, astubs, newDest);
+  sr->replaceOldTranslations(a, astubs);
 }
 
 void TranslatorX64::invalidateFileWork(Eval::PhpFile* f) {
@@ -10508,6 +11136,7 @@ bool TranslatorX64::invalidateFile(Eval::PhpFile* f) {
 } // HPHP::VM::Transl
 
 static const Trace::Module TRACEMOD = Trace::tx64;
+
 void invalidatePath(const std::string& path) {
   TRACE(1, "invalidatePath: abspath %s\n", path.c_str());
   PendQ::defer(new DeferredPathInvalidate(path));

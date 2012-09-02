@@ -136,7 +136,8 @@ public:
     if (m_stats.usage > m_stats.peakUsage) {
       // NOTE: the peak memory usage monotonically increases, so there cannot
       // be a second OOM exception in one request.
-      if (m_stats.maxBytes > 0 && m_stats.peakUsage <= m_stats.maxBytes &&
+      ASSERT(m_stats.maxBytes > 0);
+      if (m_stats.peakUsage <= m_stats.maxBytes &&
           m_stats.usage > m_stats.maxBytes) {
         refreshStatsHelperExceeded();
       }
@@ -199,7 +200,6 @@ private:
   int64  m_prevAllocated;
   size_t* m_cactive;
   size_t m_cactiveLimit;
-  bool m_stopped; // Set to true if m_cactive exceeded limit.
 
 public:
   static bool s_statsEnabled;

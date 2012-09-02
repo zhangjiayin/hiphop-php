@@ -28,6 +28,8 @@ endif()
 
 if (USE_HHVM)
 	ADD_DEFINITIONS("-DHHVM -DHHVM_BINARY=1 -DHHVM_PATH=\\\"${HPHP_HOME}/src/hhvm/hhvm\\\"")
+else()
+	ADD_DEFINITIONS("-DHHVM_PATH=\"\"")
 endif(USE_HHVM)
 
 if (USE_HHVM)
@@ -45,6 +47,12 @@ foreach (dir ${RECURSIVE_SOURCE_SUBDIRS})
 	list(APPEND C_SOURCES ${files})
 
 endforeach(dir ${RECURSIVE_SOURCE_SUBDIRS})
+
+# Disable hardware counters off of Linux
+if(NOT LINUX)
+	add_definitions(-DNO_HARDWARE_COUNTERS)
+	list(REMOVE_ITEM CXX_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/util/hardware_counter.cpp)
+endif()
 
 # remove ext_hhvm
 foreach (file ${CXX_SOURCES})

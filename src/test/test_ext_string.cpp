@@ -820,6 +820,8 @@ bool TestExtString::test_strrchr() {
 bool TestExtString::test_strstr() {
   String email  = "name@example.com";
   VS(f_strstr(email, "@"), "@example.com");
+  VS(f_strstr(email, "@", true), "name");
+  VS(f_strstr(email, "@", false), "@example.com");
   return Count(true);
 }
 
@@ -895,6 +897,9 @@ bool TestExtString::test_count_chars() {
 
 bool TestExtString::test_str_word_count() {
   VS(f_str_word_count("Two Ts and one F."), 5);
+  VS(f_str_word_count("", 2), Array::Create());
+  VS(f_str_word_count(1, 2), Array::Create());
+  VS(f_str_word_count("1 2", 2), Array::Create());
   return Count(true);
 }
 

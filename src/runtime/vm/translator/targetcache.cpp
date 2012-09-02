@@ -30,7 +30,6 @@
 #include <runtime/vm/translator/annotation.h>
 #include <runtime/vm/translator/targetcache.h>
 #include <runtime/vm/translator/translator-inline.h>
-#include <runtime/vm/exception_gate.h>
 #include <system/gen/sys/system_globals.h>
 #include <runtime/vm/stats.h>
 
@@ -58,14 +57,13 @@ typedef CacheHandle Handle;
 void
 undefinedError(const char* msg, const char* name) {
   VMRegAnchor _;
-  EXCEPTION_GATE_ENTER();
   raise_error(msg, name);
-  EXCEPTION_GATE_RETURN();
 }
 
 // Targetcache memory. See the comment in targetcache.h
 __thread HPHP::x64::DataBlock tl_targetCaches = {0, 0, kNumTargetCacheBytes};
-size_t s_frontier;
+CT_ASSERT(kConditionFlagsOff + sizeof(ssize_t) <= 64);
+size_t s_frontier = kConditionFlagsOff + 64;
 static size_t s_next_bit;
 static size_t s_bits_to_go;
 
@@ -96,18 +94,7 @@ HandleVector funcCacheEntries;
 // invalidation when a function is renamed or intercepted.
 HandleVector callCacheEntries;
 
-// RAII lock for handleMaps/funcCacheEntries. Allow recursive acquisitions.
-class HandleMutex {
-  static pthread_mutex_t m_lock;
- public:
-  HandleMutex() {
-    pthread_mutex_lock(&m_lock);
-  }
-  ~HandleMutex() {
-    pthread_mutex_unlock(&m_lock);
-  }
-};
-pthread_mutex_t HandleMutex::m_lock = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
+static Mutex s_handleMutex(false /*recursive*/, RankLeaf);
 
 inline Handle
 ptrToHandle(const void* ptr) {
@@ -138,8 +125,8 @@ public:
   HandleInfo<where >= FirstCaseSensitive>::getHandleMap(where)
 
 static size_t allocBitImpl(const StringData* name, PHPNameSpace ns) {
+  Lock l(s_handleMutex);
   ASSERT_NOT_IMPLEMENTED(ns == NSInvalid || ns >= FirstCaseSensitive);
-  HandleMutex mtx;
   HandleMapCS& map = HandleInfo<true>::getHandleMap(ns);
   Handle handle;
   if (name != NULL && ns != NSInvalid && mapGet(map, name, &handle)) {
@@ -216,9 +203,9 @@ template<bool sensitive>
 Handle
 namedAlloc(PHPNameSpace where, const StringData* name,
            int numBytes, int align) {
+  Lock l(s_handleMutex);
   ASSERT(!name || (where >= 0 && where < NumNameSpaces));
   Handle retval;
-  HandleMutex mtx;
   typedef HandleInfo<sensitive> HI;
   typename HI::Map& map = HI::getHandleMap(where);
   if (name && mapGet(map, name, &retval)) {
@@ -242,7 +229,7 @@ namedAlloc(PHPNameSpace where, const StringData* name,
 void
 invalidateForRename(const StringData* name) {
   ASSERT(name);
-  HandleMutex mtx;
+  Lock l(s_handleMutex);
   {
     Handle handle;
     HandleMapIS& map = getHMap(NSFunction);
@@ -260,20 +247,35 @@ invalidateForRename(const StringData* name) {
   }
 }
 
-// requestInit --
-//   Per-request work.
+void threadInit() {
+  tl_targetCaches.init();
+}
+
+void threadExit() {
+  tl_targetCaches.free();
+}
+
+static const bool zeroViaMemset = false;
+
 void
 requestInit() {
+  ASSERT(tl_targetCaches.base);
   TRACE(1, "TargetCaches: @%p\n", tl_targetCaches.base);
-  if (!tl_targetCaches.base) {
-    tl_targetCaches.init();
-    // allocate a bit so that target cache offsets don't start at 0
-    allocBit();
+  if (zeroViaMemset) {
+    TRACE(1, "TargetCaches: bzeroing %zd bytes: %p\n", s_frontier,
+          tl_targetCaches.base);
+    memset(tl_targetCaches.base, 0, s_frontier);
   }
-  TRACE(1, "TargetCaches: bzeroing %zd bytes: %p\n", s_frontier,
-        tl_targetCaches.base);
-  if (madvise(tl_targetCaches.base, s_frontier, MADV_DONTNEED) < 0) {
-    not_reached();
+}
+
+void
+requestExit() {
+  if (!zeroViaMemset) {
+    TRACE(1, "TargetCaches: bzeroing %zd bytes: %p\n", s_frontier,
+          tl_targetCaches.base);
+    if (madvise(tl_targetCaches.base, s_frontier, MADV_DONTNEED) < 0) {
+      not_reached();
+    }
   }
 }
 
@@ -352,26 +354,18 @@ MethodCache::lookup(Handle handle, ActRec *ar, const void* extraKey) {
   Pair* pair = thiz->keyToPair(c);
   const Func* func = NULL;
   bool isMagicCall = false;
-  if (pair->m_key == c) {
+  if (LIKELY(pair->m_key == c)) {
     func = pair->m_value.getFunc();
     ASSERT(func);
     isMagicCall = pair->m_value.isMagicCall();
     Stats::inc(Stats::TgtCache_MethodHit);
   } else {
     ASSERT(IMPLIES(pair->m_key, pair->m_value.getFunc()));
-    if (pair->m_key &&
-        (func = c->wouldCall(pair->m_value.getFunc())) != NULL) {
-      if (UNLIKELY(pair->m_value.isMagicCall())) {
-        /*
-         * Don't accept another class's __call method as evidence that we
-         * don't have a definition for this method.
-         */
-        func = NULL;
-      }
-      // Leave isMagicCall false
-    }
-    Stats::inc(Stats::TgtCache_MethodHit, func != NULL);
-    if (!func) {
+    if (LIKELY(pair->m_key != NULL) &&
+        LIKELY((func = c->wouldCall(pair->m_value.getFunc())) != NULL) &&
+        LIKELY(!pair->m_value.isMagicCall())) {
+      Stats::inc(Stats::TgtCache_MethodHit, func != NULL);
+    } else {
       // lookupObjMethod uses the current frame pointer to resolve context,
       // so we'd better sync regs.
       Class* ctx = arGetContextClass((ActRec*)ar->m_savedRbp);
@@ -380,17 +374,14 @@ MethodCache::lookup(Handle handle, ActRec *ar, const void* extraKey) {
       func = g_vmContext->lookupMethodCtx(c, name, ctx, ObjMethod, false);
       if (UNLIKELY(!func)) {
         isMagicCall = true;
-        func = g_vmContext->lookupMethodCtx(c, s___call.get(), ctx, ObjMethod,
-                                            false);
+        func = c->lookupMethod(s___call.get());
         if (UNLIKELY(!func)) {
           // Do it again, but raise the error this time. Keeps the VMRegAnchor
           // off the hot path; this should be wildly unusual, since we're
           // probably about to fatal.
           VMRegAnchor _;
-          EXCEPTION_GATE_ENTER();
-          (void) g_vmContext->lookupObjMethod(func, c, name, true);
-          EXCEPTION_GATE_LEAVE();
-          // Yet somehow we succeeded. private __call? Keep going.
+          (void) g_vmContext->lookupMethodCtx(c, name, ctx, ObjMethod, true);
+          NOT_REACHED();
         }
       }
     }
@@ -422,75 +413,57 @@ MethodCache::lookup(Handle handle, ActRec *ar, const void* extraKey) {
 // GlobalCache
 //  | - BoxedGlobalCache
 
-static inline HphpArray*
-getGlobArray() {
-  SystemGlobals *g = (SystemGlobals*)get_global_variables();
-  return
-    dynamic_cast<HphpArray*>(g->hg_global_storage.getArrayData());
-}
-
 template<bool isBoxed>
 inline TypedValue*
 GlobalCache::lookupImpl(StringData *name, bool allowCreate) {
   bool hit ATTRIBUTE_UNUSED;
-  if (UNLIKELY(m_globals == NULL)) {
-    m_globals = getGlobArray();
-    TRACE(1, "%sGlobalCache %p initializing m_globals %p\n",
-          isBoxed ? "Boxed" : "",
-          this, m_globals);
-    ASSERT(m_hint == 0);
-  } else {
-    TRACE(1, "%sGlobalCache %p cbo %d m_globals %p real globals %p\n",
-          isBoxed ? "Boxed" : "",
-          this, (int)cacheHandle(), m_globals, getGlobArray());
-    ASSERT(m_globals == getGlobArray());
-  }
 
-  UNUSED int oldHint = debug ? m_hint : 0;
   TypedValue* retval;
-  retval = m_globals->nvGet(name, m_hint, &m_hint);
-  if (debug) {
-    if (retval != NULL && m_hint == oldHint) {
-      Stats::inc(Stats::TgtCache_GlobalHit);
-    } else {
-      Stats::inc(Stats::TgtCache_GlobalMiss);
-    }
-  }
-  if (!retval) {
+  if (!m_tv) {
     hit = false;
 
-    if (!allowCreate) goto miss;
-
-    VarEnv* ve = g_vmContext->m_varEnvs.front();
+    VarEnv* ve = g_vmContext->m_globalVarEnv;
     ASSERT(ve->isGlobalScope());
-    ASSERT(ve->lookup(name) == NULL);
-    TypedValue tv;
-    TV_WRITE_NULL(&tv);
-    ve->set(name, &tv);
-    retval = ve->lookup(name);
+    if (allowCreate) {
+      m_tv = ve->lookupAddRawPointer(name);
+    } else {
+      m_tv = ve->lookupRawPointer(name);
+      if (!m_tv) {
+        retval = 0;
+        goto miss;
+      }
+    }
   } else {
     hit = true;
   }
 
-  ASSERT(retval);
-  if (isBoxed && retval->m_type != KindOfVariant) {
-    tvBox(retval);
-    ASSERT(retval->m_type == KindOfVariant);
+  retval = tvDerefIndirect(m_tv);
+  if (retval->m_type == KindOfUninit) {
+    if (!allowCreate) {
+      retval = 0;
+      goto miss;
+    } else {
+      TV_WRITE_NULL(retval);
+    }
   }
-  if (!isBoxed && retval->m_type == KindOfVariant) {
+  if (isBoxed && retval->m_type != KindOfRef) {
+    tvBox(retval);
+  }
+  if (!isBoxed && retval->m_type == KindOfRef) {
     retval = retval->m_data.ptv;
   }
-  ASSERT(!isBoxed || retval->m_type == KindOfVariant);
-  ASSERT(!IS_REFCOUNTED_TYPE(retval->m_type) || retval->_count >= 0);
+  ASSERT(!isBoxed || retval->m_type == KindOfRef);
+  ASSERT(!allowCreate || retval);
 
 miss:
   // decRef the name if we consumed it.  If we didn't get a global, we
   // need to leave the name for the caller to use before decrefing (to
   // emit warnings).
   if (retval && name->decRefCount() == 0) { name->release(); }
-  TRACE(5, "%sGlobalCache::lookup(\"%s\") %p -> (%s) %p t%d\n",
+  TRACE(5, "%sGlobalCache::lookup(\"%s\") tv@%p %p -> (%s) %p t%d\n",
         isBoxed ? "Boxed" : "",
         name->data(),
+        m_tv,
         retval,
         hit ? "hit" : "miss",
         retval ? retval->m_data.ptv : 0,
@@ -502,7 +475,7 @@ TypedValue*
 GlobalCache::lookup(Handle handle, StringData* name) {
   GlobalCache* thiz = (GlobalCache*)GlobalCache::cacheAtHandle(handle);
   TypedValue* retval = thiz->lookupImpl<false>(name, false /* allowCreate */);
-  ASSERT(!retval || retval->m_type != KindOfVariant);
+  ASSERT(!retval || retval->m_type != KindOfRef);
   return retval;
 }
 
@@ -510,7 +483,7 @@ TypedValue*
 GlobalCache::lookupCreate(Handle handle, StringData* name) {
   GlobalCache* thiz = (GlobalCache*)GlobalCache::cacheAtHandle(handle);
   TypedValue* retval = thiz->lookupImpl<false>(name, true /* allowCreate */);
-  ASSERT(retval->m_type != KindOfVariant);
+  ASSERT(retval->m_type != KindOfRef);
   return retval;
 }
 
@@ -519,7 +492,7 @@ BoxedGlobalCache::lookup(Handle handle, StringData* name) {
   BoxedGlobalCache* thiz = (BoxedGlobalCache*)
     BoxedGlobalCache::cacheAtHandle(handle);
   TypedValue* retval = thiz->lookupImpl<true>(name, false /* allowCreate */);
-  ASSERT(!retval || retval->m_type == KindOfVariant);
+  ASSERT(!retval || retval->m_type == KindOfRef);
   return retval;
 }
 
@@ -528,7 +501,7 @@ BoxedGlobalCache::lookupCreate(Handle handle, StringData* name) {
   BoxedGlobalCache* thiz = (BoxedGlobalCache*)
     BoxedGlobalCache::cacheAtHandle(handle);
   TypedValue* retval = thiz->lookupImpl<true>(name, true /* allowCreate */);
-  ASSERT(retval->m_type == KindOfVariant);
+  ASSERT(retval->m_type == KindOfRef);
   return retval;
 }
 
@@ -543,8 +516,8 @@ CacheHandle allocClassInitProp(const StringData* name) {
 }
 
 CacheHandle allocClassInitSProp(const StringData* name) {
-  return namedAlloc<NSClsInitSProp>(name, sizeof(HphpArray*),
-                                    sizeof(HphpArray*));
+  return namedAlloc<NSClsInitSProp>(name, sizeof(TypedValue*),
+                                    sizeof(TypedValue*));
 }
 
 CacheHandle allocFixedFunction(const StringData* name) {
@@ -562,7 +535,6 @@ lookupKnownClass(Class** cache, const StringData* clsName, bool isClass) {
   Class* cls = *cache;
   ASSERT(!cls); // the caller should already have checked
   VMRegAnchor _;
-  EXCEPTION_GATE_ENTER();
   AutoloadHandler::s_instance->invokeHandler(clsName->data());
   cls = *cache;
 
@@ -574,7 +546,6 @@ lookupKnownClass(Class** cache, const StringData* clsName, bool isClass) {
   } else if (UNLIKELY(!cls)) {
     undefinedError(Strings::UNKNOWN_CLASS, clsName->data());
   }
-  EXCEPTION_GATE_LEAVE();
   return cls;
 }
 template Class* lookupKnownClass<true>(Class**, const StringData*, bool);
@@ -601,9 +572,7 @@ ClassCache::lookup(Handle handle, StringData *name,
     const NamedEntity *ne = Unit::GetNamedEntity(name);
     Class *c = Unit::lookupClass(ne);
     if (UNLIKELY(!c)) {
-      EXCEPTION_GATE_ENTER();
       c = Unit::loadMissingClass(ne, name);
-      EXCEPTION_GATE_LEAVE();
       if (UNLIKELY(!c)) {
         undefinedError(Strings::UNKNOWN_CLASS, name->data());
       }
@@ -624,8 +593,8 @@ ClassCache::lookup(Handle handle, StringData *name,
 //=============================================================================
 // PropCache
 
-void* propLookupPrep(CacheHandle& ch, const StringData* name,
-                     HomeState hs, CtxState cs, NameState ns) {
+pcb_lookup_func_t propLookupPrep(CacheHandle& ch, const StringData* name,
+                                 HomeState hs, CtxState cs, NameState ns) {
   if (false) {
     CacheHandle ch = 0;
     ObjectData* base = NULL;
@@ -646,32 +615,32 @@ void* propLookupPrep(CacheHandle& ch, const StringData* name,
     if (ns == STATIC_NAME) {
       ch = PropCache::alloc(name);
       if (hs == BASE_CELL) {
-        return (void*)PropCache::lookup<false>;
+        return PropCache::lookup<false>;
       } else if (hs == BASE_LOCAL) {
-        return (void*)PropCache::lookup<true>;
+        return PropCache::lookup<true>;
       }
     } else if (ns == DYN_NAME) {
       ch = PropNameCache::alloc();
       if (hs == BASE_CELL) {
-        return (void*)PropNameCache::lookup<false>;
+        return PropNameCache::lookup<false>;
       } else if (hs == BASE_LOCAL) {
-        return (void*)PropNameCache::lookup<true>;
+        return PropNameCache::lookup<true>;
       }
     }
   } else if (cs == DYN_CONTEXT) {
     if (ns == STATIC_NAME) {
       ch = PropCtxCache::alloc(name);
       if (hs == BASE_CELL) {
-        return (void*)PropCtxCache::lookup<false>;
+        return PropCtxCache::lookup<false>;
       } else if (hs == BASE_LOCAL) {
-        return (void*)PropCtxCache::lookup<true>;
+        return PropCtxCache::lookup<true>;
       }
     } else if (ns == DYN_NAME) {
       ch = PropCtxNameCache::alloc();
       if (hs == BASE_CELL) {
-        return (void*)PropCtxNameCache::lookup<false>;
+        return PropCtxNameCache::lookup<false>;
       } else if (hs == BASE_LOCAL) {
-        return (void*)PropCtxNameCache::lookup<true>;
+        return PropCtxNameCache::lookup<true>;
       }
     }
   }
@@ -679,8 +648,8 @@ void* propLookupPrep(CacheHandle& ch, const StringData* name,
   NOT_REACHED();
 }
 
-void* propSetPrep(CacheHandle& ch, const StringData* name,
-                  HomeState hs, CtxState cs, NameState ns) {
+pcb_set_func_t propSetPrep(CacheHandle& ch, const StringData* name,
+                           HomeState hs, CtxState cs, NameState ns) {
   if (false) {
     CacheHandle ch = 0;
     ObjectData* base = NULL;
@@ -702,32 +671,32 @@ void* propSetPrep(CacheHandle& ch, const StringData* name,
     if (ns == STATIC_NAME) {
       ch = PropCache::alloc(name);
       if (hs == BASE_CELL) {
-        return (void*)PropCache::set<false>;
+        return PropCache::set<false>;
       } else if (hs == BASE_LOCAL) {
-        return (void*)PropCache::set<true>;
+        return PropCache::set<true>;
       }
     } else if (ns == DYN_NAME) {
       ch = PropNameCache::alloc();
       if (hs == BASE_CELL) {
-        return (void*)PropNameCache::set<false>;
+        return PropNameCache::set<false>;
       } else if (hs == BASE_LOCAL) {
-        return (void*)PropNameCache::set<true>;
+        return PropNameCache::set<true>;
       }
     }
   } else if (cs == DYN_CONTEXT) {
     if (ns == STATIC_NAME) {
       ch = PropCtxCache::alloc(name);
       if (hs == BASE_CELL) {
-        return (void*)PropCtxCache::set<false>;
+        return PropCtxCache::set<false>;
       } else if (hs == BASE_LOCAL) {
-        return (void*)PropCtxCache::set<true>;
+        return PropCtxCache::set<true>;
       }
     } else if (ns == DYN_NAME) {
       ch = PropCtxNameCache::alloc();
       if (hs == BASE_CELL) {
-        return (void*)PropCtxNameCache::set<false>;
+        return PropCtxNameCache::set<false>;
       } else if (hs == BASE_LOCAL) {
-        return (void*)PropCtxNameCache::set<true>;
+        return PropCtxNameCache::set<true>;
       }
     }
   }
@@ -776,7 +745,7 @@ PropCtxNameCache::incStat() { Stats::inc(Stats::Tx64_PropCtxNameCache); }
 
 template<typename Key, PHPNameSpace ns>
 template<bool baseIsLocal>
-TypedValue*
+void
 PropCacheBase<Key, ns>::lookup(CacheHandle handle, ObjectData* base,
                                StringData* name, TypedValue* stackPtr,
                                ActRec* fp) {
@@ -786,84 +755,83 @@ PropCacheBase<Key, ns>::lookup(CacheHandle handle, ObjectData* base,
   Key key(c, fp, name);
   typename Parent::Self* thiz = Parent::cacheAtHandle(handle);
   typename Parent::Pair* pair = thiz->keyToPair(key);
+  TypedValue* result;
+  RefData* refToFree = baseIsLocal || stackPtr->m_type != KindOfRef ?
+    NULL : stackPtr->m_data.pref;
   if (pair->m_key == key) {
-    TypedValue* result = (TypedValue*)((uintptr_t)base + pair->m_value);
+    result = (TypedValue*)((uintptr_t)base + pair->m_value);
     if (UNLIKELY(result->m_type == KindOfUninit)) {
       VMRegAnchor _;
-      ASSERT(base->isInstance());
       static_cast<Instance*>(base)->raiseUndefProp(name);
       result = (TypedValue*)&init_null_variant;
+    } else if (UNLIKELY(result->m_type == KindOfRef)) {
+      result = result->m_data.ptv;
     }
-
+    tvDupCell(result, stackPtr);
     Stats::inc(Stats::TgtCache_PropGetHit);
-    return result;
-  }
-  if (!pair->m_value) {
-    Stats::inc(Stats::TgtCache_PropGetFill);
+    goto exit;
   } else {
-    Stats::inc(Stats::TgtCache_PropGetMiss);
-  }
-
-  VMRegAnchor _;
-  // For getters and extension objects we must provide our own storage
-  // for the property; we use the stack cell where the value
-  // belongs.
-  TypedValue* result = stackPtr;
-  // Pseudomains don't always have the same context class
-  ASSERT(!curFunc()->isPseudoMain());
-  Class* ctx = arGetContextClass(g_vmContext->getFP());
-  Instance* instance =
-    base->isInstance() ? static_cast<Instance*>(base) : NULL;
-
-  // "Hold" the reference in stackPtr, too.
-  TypedValue &ref = *stackPtr;
-  tvWriteUninit(&ref);
-  EXCEPTION_GATE_ENTER();
-  if (LIKELY(instance != NULL)) {
-    instance->propW(result, ref, ctx, name);
-  } else {
-    CStrRef ctxName = ctx ? ctx->nameRef() : null_string;
-    tvAsVariant(result) = base->o_get(CStrRef(name), true, ctxName);
-  }
-  EXCEPTION_GATE_LEAVE();
-
-  ASSERT(result == stackPtr || instance != NULL);
-  Slot propIndex;
-  if (result == stackPtr) {
-    // The property is already in the right place and we already own
-    // a reference to it. Clean up and tell our caller there's nothing
-    // left to do.
-    if (result->m_type == KindOfVariant) {
-      tvUnbox(result);
+    if (!pair->m_value) {
+      Stats::inc(Stats::TgtCache_PropGetFill);
+    } else {
+      Stats::inc(Stats::TgtCache_PropGetMiss);
     }
-    if (!baseIsLocal && base->decRefCount() == 0) {
+
+    VMRegAnchor _;
+    // Pseudomains don't always have the same context class
+    ASSERT(!curFunc()->isPseudoMain());
+    Class* ctx = arGetContextClass(g_vmContext->getFP());
+    Instance* instance = static_cast<Instance*>(base);
+
+    // propW may need temporary storage (for getters, eg)
+    // use the target cell on the stack; this will automatically
+    // be freed (if necessary) when we overwrite it with result
+    tvWriteUninit(stackPtr);
+    if (debug) result = (TypedValue*)-1;
+    instance->propW(result, *stackPtr, ctx, name);
+
+    if (UNLIKELY(result == stackPtr)) {
+      if (UNLIKELY(result->m_type == KindOfRef)) {
+        tvUnbox(result);
+      }
+      Stats::inc(Stats::TgtCache_PropGetFail);
+      goto exit;
+    }
+    Slot propIndex;
+    if ((propIndex = instance->declPropInd(result)) != kInvalidSlot) {
+      // It's a declared property and has a fixed offset from
+      // base. Store this in the cache. We need to hold a reference to
+      // name in case it's not a static string, and to keep things
+      // simple we're relying on these strings getting swept at the end
+      // of the request. If we're evicting an existing value we do the
+      // decRef now to save memory.
+      ASSERT(result != stackPtr);
+      name->incRefCount();
+      pair->m_key.destroy();
+      pair->m_key = key;
+      pair->m_value = c->declPropOffset(propIndex);
+    } else {
+      Stats::inc(Stats::TgtCache_PropGetFail);
+    }
+  }
+  if (UNLIKELY(result->m_type == KindOfRef )) {
+    result = result->m_data.ptv;
+  }
+  tvSet(result, stackPtr);
+
+  exit:
+  if (!baseIsLocal) {
+    if (refToFree) {
+      tvDecRefRefInternal(refToFree);
+    } else if (base->decRefCount() == 0) {
       base->release();
     }
-
-    Stats::inc(Stats::TgtCache_PropGetFail);
-    return NULL;
-  } else if ((propIndex = instance->declPropInd(result)) != kInvalidSlot) {
-    // It's a declared property and has a fixed offset from
-    // base. Store this in the cache. We need to hold a reference to
-    // name in case it's not a static string, and to keep things
-    // simple we're relying on these strings getting swept at the end
-    // of the request. If we're evicting an existing value we do the
-    // decRef now to save memory.
-    ASSERT(result != stackPtr);
-    name->incRefCount();
-    pair->m_key.destroy();
-    pair->m_key = key;
-    pair->m_value = c->declPropOffset(propIndex);
-  } else {
-    Stats::inc(Stats::TgtCache_PropGetFail);
   }
-
-  return result;
 }
 
 template<typename Key, PHPNameSpace ns>
 template<bool baseIsLocal>
-TypedValue*
+void
 PropCacheBase<Key, ns>::set(CacheHandle ch, ObjectData* base, StringData* name,
                             int64 val, DataType type, ActRec* fp) {
   incStat();
@@ -872,28 +840,26 @@ PropCacheBase<Key, ns>::set(CacheHandle ch, ObjectData* base, StringData* name,
   Key key(c, fp, name);
   typename Parent::Self* thiz = Parent::cacheAtHandle(ch);
   typename Parent::Pair* pair = thiz->keyToPair(key);
-  if (pair->m_key == key) {
-    Stats::inc(Stats::TgtCache_PropSetHit);
-    return (TypedValue*)((uintptr_t)base + pair->m_value);
-  }
-  if (!pair->m_value) {
-    Stats::inc(Stats::TgtCache_PropSetFill);
-  } else {
-    Stats::inc(Stats::TgtCache_PropSetMiss);
-  }
-
-  VMRegAnchor _;
-  // Pseudomains don't always have the same context class
-  ASSERT(!curFunc()->isPseudoMain());
-  Class* ctx = arGetContextClass(g_vmContext->getFP());
-  Instance* instance =
-    base->isInstance() ? static_cast<Instance*>(base) : NULL;
   TypedValue propVal;
-  propVal._count = 0;
+  if (debug) propVal._count = 0;
   propVal.m_type = type;
   propVal.m_data.num = val;
-  EXCEPTION_GATE_ENTER();
-  if (LIKELY(instance != NULL)) {
+  if (pair->m_key == key) {
+    Stats::inc(Stats::TgtCache_PropSetHit);
+    TypedValue* result = (TypedValue*)((uintptr_t)base + pair->m_value);
+    tvSet(&propVal, result);
+  } else {
+    if (!pair->m_value) {
+      Stats::inc(Stats::TgtCache_PropSetFill);
+    } else {
+      Stats::inc(Stats::TgtCache_PropSetMiss);
+    }
+
+    VMRegAnchor _;
+    // Pseudomains don't always have the same context class
+    ASSERT(!curFunc()->isPseudoMain());
+    Class* ctx = arGetContextClass(g_vmContext->getFP());
+    Instance* instance = static_cast<Instance*>(base);
     TypedValue* result = instance->setProp(ctx, name, &propVal);
     // setProp will return a real pointer iff it's a declared property
     if (result != NULL) {
@@ -905,17 +871,11 @@ PropCacheBase<Key, ns>::set(CacheHandle ch, ObjectData* base, StringData* name,
     } else {
       Stats::inc(Stats::TgtCache_PropSetFail);
     }
-  } else {
-    base->o_set(CStrRef(name), tvAsCVarRef(&propVal));
-    Stats::inc(Stats::TgtCache_PropSetFail);
   }
-  EXCEPTION_GATE_LEAVE();
 
   if (!baseIsLocal && base->decRefCount() == 0) {
     base->release();
   }
-
-  return NULL;
 }
 
 /*
@@ -930,13 +890,11 @@ CacheHandle allocConstant(StringData* name) {
 }
 
 CacheHandle allocStatic() {
-  return ptrToHandle(tl_targetCaches.allocAt(s_frontier, sizeof(TypedValue*),
-                                             sizeof(TypedValue*)));
+  return namedAlloc<NSInvalid>(NULL, sizeof(TypedValue*), sizeof(TypedValue*));
 }
 
 void
 fillConstant(StringData* name) {
-  HandleMutex mtx;
   ASSERT(name);
   Handle ch = allocConstant(name);
   testAndSetBit(allocCnsBit(name));
@@ -959,9 +917,7 @@ lookupClassConstant(TypedValue* cache,
   Stats::inc(Stats::TgtCache_ClsCnsMiss, 1);
 
   TypedValue* clsCns;
-  EXCEPTION_GATE_ENTER();
   clsCns = g_vmContext->lookupClsCns(ne, cls, cns);
-  EXCEPTION_GATE_LEAVE();
   *cache = *clsCns;
 
   return cache;
@@ -987,9 +943,7 @@ SPropCache::lookup(Handle handle, const Class *cls, const StringData *name) {
   ASSERT(ctx == arGetContextClass((ActRec*)vmfp()));
   bool visible, accessible;
   TypedValue* val;
-  EXCEPTION_GATE_ENTER();
   val = cls->getSProp(ctx, name, visible, accessible);
-  EXCEPTION_GATE_LEAVE();
   if (UNLIKELY(!visible)) {
     string methodName;
     string_printf(methodName, "%s::$%s",
@@ -1061,7 +1015,6 @@ StaticMethodCache::lookup(Handle handle, const NamedEntity *ne,
   VMRegAnchor _; // needed for lookupClsMethod.
 
   ActRec* ar = reinterpret_cast<ActRec*>(vmsp() - kNumActRecCells);
-  EXCEPTION_GATE_ENTER();
   const Func* f;
   VMExecutionContext* ec = g_vmContext;
   const Class* cls = Unit::loadClass(ne, clsName);
@@ -1099,7 +1052,6 @@ StaticMethodCache::lookup(Handle handle, const NamedEntity *ne,
   // Don't update the cache; this case was too scary to memoize.
   TRACE(1, "unfillable miss %s :: %s -> %p\n", clsName->data(),
         methName->data(), ar->m_func);
-  EXCEPTION_GATE_LEAVE();
   // Indicate to the caller that there is no work to do.
   return NULL;
 }
@@ -1114,7 +1066,6 @@ StaticMethodFCache::lookup(Handle handle, const Class* cls,
   Stats::inc(Stats::TgtCache_StaticMethodFHit, -1);
   VMRegAnchor _; // needed for lookupClsMethod.
 
-  EXCEPTION_GATE_ENTER();
   const Func* f;
   VMExecutionContext* ec = g_vmContext;
   LookupResult res = ec->lookupClsMethod(f, cls, methName,
@@ -1146,7 +1097,6 @@ StaticMethodFCache::lookup(Handle handle, const Class* cls,
   Stats::inc(Stats::Instr_TC, -1);
   Stats::inc(Stats::Instr_InterpOneFPushClsMethodF);
   ec->opFPushClsMethodF();
-  EXCEPTION_GATE_LEAVE();
 
   // We already did all the work so tell our caller to do nothing.
   TRACE(1, "miss staticfcache %s :: %s -> intractable null\n",

@@ -82,7 +82,6 @@ bool ini_on_update_hash_function(CStrRef value, void *p) {
 c_Memcache::c_Memcache(const ObjectStaticCallbacks *cb) :
     ExtObjectData(cb), m_memcache(), m_compress_threshold(0),
     m_min_compress_savings(0.2) {
-  CPP_BUILTIN_CLASS_INIT(Memcache);
   memcached_create(&m_memcache);
 
   if (MEMCACHEG(hash_strategy) == "consistent") {
@@ -434,7 +433,8 @@ Array static memcache_build_stats(const memcached_st *ptr,
                                 memcached_stat_st *memc_stat,
                                 memcached_return_t *ret) {
   char **curr_key;
-  char **stat_keys = memcached_stat_get_keys(ptr, memc_stat, ret);
+  char **stat_keys = memcached_stat_get_keys(const_cast<memcached_st*>(ptr),
+                                             memc_stat, ret);
 
   if (*ret != MEMCACHED_SUCCESS) {
     if (stat_keys) {

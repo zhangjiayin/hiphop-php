@@ -1,111 +1,98 @@
+/*
+   +----------------------------------------------------------------------+
+   | HipHop for PHP                                                       |
+   +----------------------------------------------------------------------+
+   | Copyright (c) 2010- Facebook, Inc. (http://www.facebook.com)         |
+   | Copyright (c) 1997-2010 The PHP Group                                |
+   +----------------------------------------------------------------------+
+   | This source file is subject to version 3.01 of the PHP license,      |
+   | that is bundled with this package in the file LICENSE, and is        |
+   | available through the world-wide-web at the following url:           |
+   | http://www.php.net/license/3_01.txt                                  |
+   | If you did not receive a copy of the PHP license and are unable to   |
+   | obtain it through the world-wide-web, please send a note to          |
+   | license@php.net so we can mail you a copy immediately.               |
+   +----------------------------------------------------------------------+
+*/
 #include <runtime/ext_hhvm/ext_hhvm.h>
 #include <runtime/base/builtin_functions.h>
 #include <runtime/base/array/array_init.h>
 #include <runtime/ext/ext.h>
 #include <runtime/vm/class.h>
 #include <runtime/vm/runtime.h>
-#include <runtime/vm/exception_gate.h>
 #include <exception>
 
 namespace HPHP {
 
-class c_SQLite3_Instance : public c_SQLite3 {
-public:
-  c_SQLite3_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_SQLite3));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_SQLite3) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_SQLite3_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_SQLite3_Instance *this_ = (c_SQLite3_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_SQLite3) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_SQLite3::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_SQLite3::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_SQLite3::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_SQLite3::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
-
 HPHP::VM::Instance* new_SQLite3_Instance(HPHP::VM::Class* cls) {
-  return c_SQLite3_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_SQLite3) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_SQLite3(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
-void HPHP::c_SQLite3::t___construct()
-_ZN4HPHP9c_SQLite313t___constructEv
+void HPHP::c_SQLite3::t___construct(HPHP::String const&, long long, HPHP::String const&)
+_ZN4HPHP9c_SQLite313t___constructERKNS_6StringExS3_
 
 this_ => rdi
+filename => rsi
+flags => rdx
+encryption_key => rcx
 */
 
-void th_7SQLite3___construct(ObjectData* this_) asm("_ZN4HPHP9c_SQLite313t___constructEv");
+void th_7SQLite3___construct(ObjectData* this_, Value* filename, long long flags, Value* encryption_key) asm("_ZN4HPHP9c_SQLite313t___constructERKNS_6StringExS3_");
+
+TypedValue* tg1_7SQLite3___construct(TypedValue* rv, HPHP::VM::ActRec* ar, long long count, ObjectData* this_) __attribute__((noinline,cold));
+TypedValue* tg1_7SQLite3___construct(TypedValue* rv, HPHP::VM::ActRec* ar, long long count, ObjectData* this_) {
+  TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
+  rv->m_data.num = 0LL;
+  rv->_count = 0;
+  rv->m_type = KindOfNull;
+  switch (count) {
+  default: // count >= 3
+    if (!IS_STRING_TYPE((args-2)->m_type)) {
+      tvCastToStringInPlace(args-2);
+    }
+  case 2:
+    if ((args-1)->m_type != KindOfInt64) {
+      tvCastToInt64InPlace(args-1);
+    }
+  case 1:
+    break;
+  }
+  if (!IS_STRING_TYPE((args-0)->m_type)) {
+    tvCastToStringInPlace(args-0);
+  }
+  th_7SQLite3___construct((this_), (Value*)(args-0), (count > 1) ? (long long)(args[-1].m_data.num) : (long long)(k_SQLITE3_OPEN_READWRITE|k_SQLITE3_OPEN_CREATE), (count > 2) ? (Value*)(args-2) : (Value*)(&null_string));
+  return rv;
+}
 
 TypedValue* tg_7SQLite3___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
     ObjectData* this_ = (ar->hasThis() ? ar->getThis() : NULL);
     if (this_) {
-      if (count == 0LL) {
-        rv.m_data.num = 0LL;
-        rv._count = 0;
-        rv.m_type = KindOfNull;
-        th_7SQLite3___construct((this_));
-        frame_free_locals_inl(ar, 0);
-        memcpy(&ar->m_r, &rv, sizeof(TypedValue));
-        return &ar->m_r;
+      if (count >= 1LL && count <= 3LL) {
+        if ((count <= 2 || IS_STRING_TYPE((args-2)->m_type)) && (count <= 1 || (args-1)->m_type == KindOfInt64) && IS_STRING_TYPE((args-0)->m_type)) {
+          rv.m_data.num = 0LL;
+          rv._count = 0;
+          rv.m_type = KindOfNull;
+          th_7SQLite3___construct((this_), (Value*)(args-0), (count > 1) ? (long long)(args[-1].m_data.num) : (long long)(k_SQLITE3_OPEN_READWRITE|k_SQLITE3_OPEN_CREATE), (count > 2) ? (Value*)(args-2) : (Value*)(&null_string));
+          frame_free_locals_inl(ar, 3);
+          memcpy(&ar->m_r, &rv, sizeof(TypedValue));
+          return &ar->m_r;
+        } else {
+          tg1_7SQLite3___construct(&rv, ar, count , this_);
+          frame_free_locals_inl(ar, 3);
+          memcpy(&ar->m_r, &rv, sizeof(TypedValue));
+          return &ar->m_r;
+        }
       } else {
-        throw_toomany_arguments_nr("SQLite3::__construct", 0, 1);
+        throw_wrong_arguments_nr("SQLite3::__construct", count, 1, 3, 1);
       }
     } else {
       throw_instance_method_fatal("SQLite3::__construct");
@@ -113,10 +100,10 @@ TypedValue* tg_7SQLite3___construct(HPHP::VM::ActRec *ar) {
     rv.m_data.num = 0LL;
     rv._count = 0;
     rv.m_type = KindOfNull;
-    frame_free_locals_inl(ar, 0);
+    frame_free_locals_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -157,7 +144,6 @@ TypedValue* tg1_7SQLite3_open(TypedValue* rv, HPHP::VM::ActRec* ar, long long co
 }
 
 TypedValue* tg_7SQLite3_open(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -190,7 +176,63 @@ TypedValue* tg_7SQLite3_open(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
+}
+
+/*
+bool HPHP::c_SQLite3::t_busytimeout(long long)
+_ZN4HPHP9c_SQLite313t_busytimeoutEx
+
+(return value) => rax
+this_ => rdi
+msecs => rsi
+*/
+
+bool th_7SQLite3_busytimeout(ObjectData* this_, long long msecs) asm("_ZN4HPHP9c_SQLite313t_busytimeoutEx");
+
+TypedValue* tg1_7SQLite3_busytimeout(TypedValue* rv, HPHP::VM::ActRec* ar, long long count, ObjectData* this_) __attribute__((noinline,cold));
+TypedValue* tg1_7SQLite3_busytimeout(TypedValue* rv, HPHP::VM::ActRec* ar, long long count, ObjectData* this_) {
+  TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
+  rv->_count = 0;
+  rv->m_type = KindOfBoolean;
+  tvCastToInt64InPlace(args-0);
+  rv->m_data.num = (th_7SQLite3_busytimeout((this_), (long long)(args[-0].m_data.num))) ? 1LL : 0LL;
+  return rv;
+}
+
+TypedValue* tg_7SQLite3_busytimeout(HPHP::VM::ActRec *ar) {
+    TypedValue rv;
+    long long count = ar->numArgs();
+    TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
+    ObjectData* this_ = (ar->hasThis() ? ar->getThis() : NULL);
+    if (this_) {
+      if (count == 1LL) {
+        if ((args-0)->m_type == KindOfInt64) {
+          rv._count = 0;
+          rv.m_type = KindOfBoolean;
+          rv.m_data.num = (th_7SQLite3_busytimeout((this_), (long long)(args[-0].m_data.num))) ? 1LL : 0LL;
+          frame_free_locals_inl(ar, 1);
+          memcpy(&ar->m_r, &rv, sizeof(TypedValue));
+          return &ar->m_r;
+        } else {
+          tg1_7SQLite3_busytimeout(&rv, ar, count , this_);
+          frame_free_locals_inl(ar, 1);
+          memcpy(&ar->m_r, &rv, sizeof(TypedValue));
+          return &ar->m_r;
+        }
+      } else {
+        throw_wrong_arguments_nr("SQLite3::busytimeout", count, 1, 1, 1);
+      }
+    } else {
+      throw_instance_method_fatal("SQLite3::busytimeout");
+    }
+    rv.m_data.num = 0LL;
+    rv._count = 0;
+    rv.m_type = KindOfNull;
+    frame_free_locals_inl(ar, 1);
+    memcpy(&ar->m_r, &rv, sizeof(TypedValue));
+    return &ar->m_r;
+  return &ar->m_r;
 }
 
 /*
@@ -204,7 +246,6 @@ this_ => rdi
 bool th_7SQLite3_close(ObjectData* this_) asm("_ZN4HPHP9c_SQLite37t_closeEv");
 
 TypedValue* tg_7SQLite3_close(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -229,7 +270,7 @@ TypedValue* tg_7SQLite3_close(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -254,7 +295,6 @@ TypedValue* tg1_7SQLite3_exec(TypedValue* rv, HPHP::VM::ActRec* ar, long long co
 }
 
 TypedValue* tg_7SQLite3_exec(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -286,7 +326,7 @@ TypedValue* tg_7SQLite3_exec(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -301,7 +341,6 @@ this_ => rsi
 Value* th_7SQLite3_version(Value* _rv, ObjectData* this_) asm("_ZN4HPHP9c_SQLite39t_versionEv");
 
 TypedValue* tg_7SQLite3_version(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -327,7 +366,7 @@ TypedValue* tg_7SQLite3_version(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -341,7 +380,6 @@ this_ => rdi
 long long th_7SQLite3_lastinsertrowid(ObjectData* this_) asm("_ZN4HPHP9c_SQLite317t_lastinsertrowidEv");
 
 TypedValue* tg_7SQLite3_lastinsertrowid(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -366,7 +404,7 @@ TypedValue* tg_7SQLite3_lastinsertrowid(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -380,7 +418,6 @@ this_ => rdi
 long long th_7SQLite3_lasterrorcode(ObjectData* this_) asm("_ZN4HPHP9c_SQLite315t_lasterrorcodeEv");
 
 TypedValue* tg_7SQLite3_lasterrorcode(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -405,7 +442,7 @@ TypedValue* tg_7SQLite3_lasterrorcode(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -420,7 +457,6 @@ this_ => rsi
 Value* th_7SQLite3_lasterrormsg(Value* _rv, ObjectData* this_) asm("_ZN4HPHP9c_SQLite314t_lasterrormsgEv");
 
 TypedValue* tg_7SQLite3_lasterrormsg(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -446,7 +482,7 @@ TypedValue* tg_7SQLite3_lasterrormsg(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -471,7 +507,6 @@ TypedValue* tg1_7SQLite3_loadextension(TypedValue* rv, HPHP::VM::ActRec* ar, lon
 }
 
 TypedValue* tg_7SQLite3_loadextension(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -503,7 +538,7 @@ TypedValue* tg_7SQLite3_loadextension(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -517,7 +552,6 @@ this_ => rdi
 long long th_7SQLite3_changes(ObjectData* this_) asm("_ZN4HPHP9c_SQLite39t_changesEv");
 
 TypedValue* tg_7SQLite3_changes(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -542,7 +576,7 @@ TypedValue* tg_7SQLite3_changes(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -569,7 +603,6 @@ TypedValue* tg1_7SQLite3_escapestring(TypedValue* rv, HPHP::VM::ActRec* ar, long
 }
 
 TypedValue* tg_7SQLite3_escapestring(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -602,7 +635,7 @@ TypedValue* tg_7SQLite3_escapestring(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -627,7 +660,6 @@ TypedValue* tg1_7SQLite3_prepare(TypedValue* rv, HPHP::VM::ActRec* ar, long long
 }
 
 TypedValue* tg_7SQLite3_prepare(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -658,7 +690,7 @@ TypedValue* tg_7SQLite3_prepare(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -683,7 +715,6 @@ TypedValue* tg1_7SQLite3_query(TypedValue* rv, HPHP::VM::ActRec* ar, long long c
 }
 
 TypedValue* tg_7SQLite3_query(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -714,7 +745,7 @@ TypedValue* tg_7SQLite3_query(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -750,7 +781,6 @@ TypedValue* tg1_7SQLite3_querysingle(TypedValue* rv, HPHP::VM::ActRec* ar, long 
 }
 
 TypedValue* tg_7SQLite3_querysingle(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -781,7 +811,7 @@ TypedValue* tg_7SQLite3_querysingle(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -818,7 +848,6 @@ TypedValue* tg1_7SQLite3_createfunction(TypedValue* rv, HPHP::VM::ActRec* ar, lo
 }
 
 TypedValue* tg_7SQLite3_createfunction(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -850,7 +879,7 @@ TypedValue* tg_7SQLite3_createfunction(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -888,7 +917,6 @@ TypedValue* tg1_7SQLite3_createaggregate(TypedValue* rv, HPHP::VM::ActRec* ar, l
 }
 
 TypedValue* tg_7SQLite3_createaggregate(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -920,7 +948,7 @@ TypedValue* tg_7SQLite3_createaggregate(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 4);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -964,7 +992,6 @@ TypedValue* tg1_7SQLite3_openblob(TypedValue* rv, HPHP::VM::ActRec* ar, long lon
 }
 
 TypedValue* tg_7SQLite3_openblob(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -996,7 +1023,7 @@ TypedValue* tg_7SQLite3_openblob(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 4);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1011,7 +1038,6 @@ this_ => rsi
 TypedValue* th_7SQLite3___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP9c_SQLite312t___destructEv");
 
 TypedValue* tg_7SQLite3___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1035,78 +1061,16 @@ TypedValue* tg_7SQLite3___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_SQLite3Stmt_Instance : public c_SQLite3Stmt {
-public:
-  c_SQLite3Stmt_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_SQLite3Stmt));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_SQLite3Stmt) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_SQLite3Stmt_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_SQLite3Stmt_Instance *this_ = (c_SQLite3Stmt_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_SQLite3Stmt) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_SQLite3Stmt::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_SQLite3Stmt::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_SQLite3Stmt::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_SQLite3Stmt::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_SQLite3Stmt_Instance(HPHP::VM::Class* cls) {
-  return c_SQLite3Stmt_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_SQLite3Stmt) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_SQLite3Stmt(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -1137,7 +1101,6 @@ TypedValue* tg1_11SQLite3Stmt___construct(TypedValue* rv, HPHP::VM::ActRec* ar, 
 }
 
 TypedValue* tg_11SQLite3Stmt___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1170,7 +1133,7 @@ TypedValue* tg_11SQLite3Stmt___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1184,7 +1147,6 @@ this_ => rdi
 long long th_11SQLite3Stmt_paramcount(ObjectData* this_) asm("_ZN4HPHP13c_SQLite3Stmt12t_paramcountEv");
 
 TypedValue* tg_11SQLite3Stmt_paramcount(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1209,7 +1171,7 @@ TypedValue* tg_11SQLite3Stmt_paramcount(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1223,7 +1185,6 @@ this_ => rdi
 bool th_11SQLite3Stmt_close(ObjectData* this_) asm("_ZN4HPHP13c_SQLite3Stmt7t_closeEv");
 
 TypedValue* tg_11SQLite3Stmt_close(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1248,7 +1209,7 @@ TypedValue* tg_11SQLite3Stmt_close(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1262,7 +1223,6 @@ this_ => rdi
 bool th_11SQLite3Stmt_reset(ObjectData* this_) asm("_ZN4HPHP13c_SQLite3Stmt7t_resetEv");
 
 TypedValue* tg_11SQLite3Stmt_reset(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1287,7 +1247,7 @@ TypedValue* tg_11SQLite3Stmt_reset(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1301,7 +1261,6 @@ this_ => rdi
 bool th_11SQLite3Stmt_clear(ObjectData* this_) asm("_ZN4HPHP13c_SQLite3Stmt7t_clearEv");
 
 TypedValue* tg_11SQLite3Stmt_clear(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1326,7 +1285,7 @@ TypedValue* tg_11SQLite3Stmt_clear(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1353,7 +1312,6 @@ TypedValue* tg1_11SQLite3Stmt_bindparam(TypedValue* rv, HPHP::VM::ActRec* ar, lo
 }
 
 TypedValue* tg_11SQLite3Stmt_bindparam(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1385,7 +1343,7 @@ TypedValue* tg_11SQLite3Stmt_bindparam(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1412,7 +1370,6 @@ TypedValue* tg1_11SQLite3Stmt_bindvalue(TypedValue* rv, HPHP::VM::ActRec* ar, lo
 }
 
 TypedValue* tg_11SQLite3Stmt_bindvalue(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1444,7 +1401,7 @@ TypedValue* tg_11SQLite3Stmt_bindvalue(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1459,7 +1416,6 @@ this_ => rsi
 TypedValue* th_11SQLite3Stmt_execute(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP13c_SQLite3Stmt9t_executeEv");
 
 TypedValue* tg_11SQLite3Stmt_execute(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1483,7 +1439,7 @@ TypedValue* tg_11SQLite3Stmt_execute(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1498,7 +1454,6 @@ this_ => rsi
 TypedValue* th_11SQLite3Stmt___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP13c_SQLite3Stmt12t___destructEv");
 
 TypedValue* tg_11SQLite3Stmt___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1522,78 +1477,16 @@ TypedValue* tg_11SQLite3Stmt___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_SQLite3Result_Instance : public c_SQLite3Result {
-public:
-  c_SQLite3Result_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_SQLite3Result));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_SQLite3Result) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_SQLite3Result_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_SQLite3Result_Instance *this_ = (c_SQLite3Result_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_SQLite3Result) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_SQLite3Result::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_SQLite3Result::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_SQLite3Result::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_SQLite3Result::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_SQLite3Result_Instance(HPHP::VM::Class* cls) {
-  return c_SQLite3Result_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_SQLite3Result) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_SQLite3Result(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -1606,7 +1499,6 @@ this_ => rdi
 void th_13SQLite3Result___construct(ObjectData* this_) asm("_ZN4HPHP15c_SQLite3Result13t___constructEv");
 
 TypedValue* tg_13SQLite3Result___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1632,7 +1524,7 @@ TypedValue* tg_13SQLite3Result___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1646,7 +1538,6 @@ this_ => rdi
 long long th_13SQLite3Result_numcolumns(ObjectData* this_) asm("_ZN4HPHP15c_SQLite3Result12t_numcolumnsEv");
 
 TypedValue* tg_13SQLite3Result_numcolumns(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1671,7 +1562,7 @@ TypedValue* tg_13SQLite3Result_numcolumns(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1698,7 +1589,6 @@ TypedValue* tg1_13SQLite3Result_columnname(TypedValue* rv, HPHP::VM::ActRec* ar,
 }
 
 TypedValue* tg_13SQLite3Result_columnname(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1731,7 +1621,7 @@ TypedValue* tg_13SQLite3Result_columnname(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1756,7 +1646,6 @@ TypedValue* tg1_13SQLite3Result_columntype(TypedValue* rv, HPHP::VM::ActRec* ar,
 }
 
 TypedValue* tg_13SQLite3Result_columntype(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1788,7 +1677,7 @@ TypedValue* tg_13SQLite3Result_columntype(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1813,7 +1702,6 @@ TypedValue* tg1_13SQLite3Result_fetcharray(TypedValue* rv, HPHP::VM::ActRec* ar,
 }
 
 TypedValue* tg_13SQLite3Result_fetcharray(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1844,7 +1732,7 @@ TypedValue* tg_13SQLite3Result_fetcharray(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1858,7 +1746,6 @@ this_ => rdi
 bool th_13SQLite3Result_reset(ObjectData* this_) asm("_ZN4HPHP15c_SQLite3Result7t_resetEv");
 
 TypedValue* tg_13SQLite3Result_reset(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1883,7 +1770,7 @@ TypedValue* tg_13SQLite3Result_reset(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1897,7 +1784,6 @@ this_ => rdi
 bool th_13SQLite3Result_finalize(ObjectData* this_) asm("_ZN4HPHP15c_SQLite3Result10t_finalizeEv");
 
 TypedValue* tg_13SQLite3Result_finalize(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1922,7 +1808,7 @@ TypedValue* tg_13SQLite3Result_finalize(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1937,7 +1823,6 @@ this_ => rsi
 TypedValue* th_13SQLite3Result___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP15c_SQLite3Result12t___destructEv");
 
 TypedValue* tg_13SQLite3Result___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1961,7 +1846,7 @@ TypedValue* tg_13SQLite3Result___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 

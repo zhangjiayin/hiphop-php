@@ -48,7 +48,7 @@ static const VM::Class* get_cls(CVarRef class_or_object) {
     ObjectData* obj = class_or_object.toCObjRef().get();
     cls = obj->getVMClass();
   } else {
-    cls = VM::Unit::lookupClass(class_or_object.toString().get());
+    cls = VM::Unit::loadClass(class_or_object.toString().get());
   }
   return cls;
 }
@@ -131,7 +131,16 @@ Array f_get_class_methods(CVarRef class_or_object) {
 
   ClassInfo::MethodVec methods;
   CStrRef class_name = get_classname(class_or_object);
-  if (!ClassInfo::GetClassMethods(methods, class_name)) return Array();
+  const ClassInfo *classInfo = NULL;
+  for (int i = 0; ; ++i) {
+    classInfo = ClassInfo::FindClassInterfaceOrTrait(class_name);
+    if (classInfo) break;
+    if (i) return Array();
+    AutoloadHandler::s_instance->invokeHandler(class_name);
+  }
+
+  if (!ClassInfo::GetClassMethods(methods, classInfo)) return Array();
+
   CStrRef klass = ctxClassName();
   bool allowPrivate = !klass.empty() && klass->isame(class_name.get());
 
@@ -318,25 +327,59 @@ Variant f_get_parent_class(CVarRef object /* = null_variant */) {
   return false;
 }
 
-bool f_is_a(CObjRef object, CStrRef class_name) {
-  return object.instanceof(class_name);
-}
+static bool is_a_impl(CVarRef class_or_object, CStrRef class_name,
+                      bool allow_string, bool subclass_only) {
+  if (class_or_object.isString() && !allow_string) {
+    return false;
+  }
 
-bool f_is_subclass_of(CVarRef class_or_object, CStrRef class_name) {
   if (hhvm) {
     const VM::Class* cls = get_cls(class_or_object);
-    if (!cls || cls->attrs() & (VM::AttrInterface|VM::AttrTrait)) return false;
+    if (!cls) return false;
+    if (cls->attrs() & VM::AttrTrait) return false;
     const VM::Class* other = VM::Unit::lookupClass(class_name.get());
-    if (other == NULL ||
-       (other->attrs() & (VM::AttrInterface|VM::AttrTrait))) return false;
+    if (!other) return false;
+    if (other->attrs() & VM::AttrTrait) return false;
+    if (other == cls) return !subclass_only;
     return cls->classof(other);
   }
+
+  /* Resolve subject class, autoloading if needed */
+  CStrRef this_class = get_classname(class_or_object);
   const ClassInfo *classInfo =
-    ClassInfo::FindClass(get_classname(class_or_object));
-  if (classInfo) {
-    return classInfo->derivesFrom(class_name, false);
+        ClassInfo::FindClassInterfaceOrTrait(this_class);
+  if (!classInfo) {
+    AutoloadHandler::s_instance->invokeHandler(this_class);
+    classInfo = ClassInfo::FindClassInterfaceOrTrait(this_class);
+    if (!classInfo) return false;
   }
-  return false;
+  if (classInfo->getAttribute() & ClassInfo::IsTrait) return false;
+
+  /* Resolve target class, don't bother to autoload as it
+   * couldn't be an ancestor of an already loaded class
+   */
+  const ClassInfo *otherInfo =
+        ClassInfo::FindClassInterfaceOrTrait(class_name);
+  if (!otherInfo) return false;
+  if (otherInfo->getAttribute() & ClassInfo::IsTrait) return false;
+
+  /* Derives from returns true for same classes
+   * override that by explicitly checking and
+   * returning false before dispatching to derivesFrom()
+   */
+  if (this_class->isame(class_name.get())) {
+    return !subclass_only;
+  }
+
+  return classInfo->derivesFrom(class_name, true);
+}
+
+bool f_is_a(CVarRef class_or_object, CStrRef class_name, bool allow_string /* = false */) {
+  return is_a_impl(class_or_object, class_name, allow_string, false);
+}
+
+bool f_is_subclass_of(CVarRef class_or_object, CStrRef class_name, bool allow_string /* = true */) {
+  return is_a_impl(class_or_object, class_name, allow_string, true);
 }
 
 bool f_method_exists(CVarRef class_or_object, CStrRef method_name) {
@@ -347,18 +390,23 @@ bool f_method_exists(CVarRef class_or_object, CStrRef method_name) {
     if (cls->attrs() & VM::AttrAbstract) {
       const VM::ClassSet& ifaces = cls->allInterfaces();
       for (VM::ClassSet::const_iterator it = ifaces.begin();
-          it != ifaces.end();
-          ++it) {
+           it != ifaces.end();
+           ++it) {
         if ((*it)->lookupMethod(method_name.get())) return true;
       }
     }
     return false;
   }
-  const ClassInfo *classInfo =
-    ClassInfo::FindClassInterfaceOrTrait(get_classname(class_or_object));
-  if (classInfo) {
-    ClassInfo *defClass;
-    return classInfo->hasMethod(method_name, defClass) != NULL;
+  CStrRef class_name = get_classname(class_or_object);
+  for (int i = 0; ; ++i) {
+    const ClassInfo *classInfo =
+      ClassInfo::FindClassInterfaceOrTrait(class_name);
+    if (classInfo) {
+      ClassInfo *defClass;
+      return classInfo->hasMethod(method_name, defClass) != NULL;
+    }
+    if (i) break;
+    AutoloadHandler::s_instance->invokeHandler(class_name);
   }
   return false;
 }

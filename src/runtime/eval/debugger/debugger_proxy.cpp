@@ -13,7 +13,6 @@
    | license@php.net so we can mail you a copy immediately.               |
    +----------------------------------------------------------------------+
 */
-#include <runtime/eval/ast/expression.h>
 #include <runtime/eval/debugger/debugger_proxy.h>
 #include <runtime/eval/debugger/cmd/cmd_interrupt.h>
 #include <runtime/eval/debugger/cmd/cmd_flow_control.h>
@@ -21,7 +20,6 @@
 #include <runtime/eval/debugger/cmd/cmd_signal.h>
 #include <runtime/eval/debugger/cmd/cmd_machine.h>
 #include <runtime/eval/debugger/debugger.h>
-#include <runtime/eval/runtime/variable_environment.h>
 #include <runtime/base/runtime_option.h>
 #include <runtime/base/frame_injection.h>
 #include <runtime/eval/eval.h>
@@ -120,7 +118,7 @@ void DebuggerProxy::switchThreadMode(ThreadMode mode,
     m_thread = 0;
     notify();
   } else {
-    m_thread = Process::GetThreadId();
+    m_thread = (int64)Process::GetThreadId();
   }
   if (mode == Normal) {
     m_jump.reset();
@@ -351,29 +349,7 @@ Variant DebuggerProxy::ExecutePHP(const std::string &php, String &output,
   if (log) {
     Logger::SetThreadHook(append_stderr, &sb);
   }
-  try {
-    LVariableTable *vars = get_variable_table();
-    FrameInjection *f = FrameInjection::GetStackFrame(frame);
-    if (f && f->isEvalFrame()) {
-      EvalFrameInjection *eframe = static_cast<EvalFrameInjection*>(f);
-      vars = &eframe->getEnv();
-    }
-
-    String code(php.c_str(), php.size(), AttachLiteral);
-    ret = eval(vars, Object(), code, false);
-
-  } catch (InvalidFunctionCallException &e) {
-    sb.append(Debugger::ColorStderr(String(e.what())));
-    sb.append(Debugger::ColorStderr(
-              "You may also need to connect to a host "
-              "(e.g., machine connect localhost)."));
-  } catch (Exception &e) {
-    sb.append(Debugger::ColorStderr(String(e.what())));
-  } catch (Object &e) {
-    sb.append(Debugger::ColorStderr(e.toString()));
-  } catch (...) {
-    sb.append(Debugger::ColorStderr(String("(unknown exception was thrown")));
-  }
+  ret = null;
   g_context->setStdout(NULL, NULL);
   g_context->swapOutputBuffer(save);
   if (log) {
@@ -385,7 +361,7 @@ Variant DebuggerProxy::ExecutePHP(const std::string &php, String &output,
 
 DThreadInfoPtr DebuggerProxy::createThreadInfo(const std::string &desc) {
   DThreadInfoPtr info(new DThreadInfo());
-  info->m_id = Process::GetThreadId();
+  info->m_id = (int64)Process::GetThreadId();
   info->m_desc = desc;
   Transport *transport = g_context->getTransport();
   if (transport) {
@@ -713,7 +689,22 @@ Variant DebuggerProxyVM::ExecutePHP(const std::string &php, String &output,
   return ret;
 }
 
+// There could be multiple breakpoints at one place but we can manage this
+// with only one breakpoint.
+BreakPointInfoPtr DebuggerProxyVM::getBreakPointAtCmd(CmdInterrupt& cmd) {
+  for (unsigned int i = 0; i < m_breakpoints.size(); ++i) {
+    BreakPointInfoPtr bp = m_breakpoints[i];
+    if (bp->m_state != BreakPointInfo::Disabled &&
+        bp->match(cmd.getInterruptType(), *cmd.getSite())) {
+      return bp;
+    }
+  }
+  return BreakPointInfoPtr();
+}
+
+
 void DebuggerProxyVM::interrupt(CmdInterrupt &cmd) {
+  changeBreakPointDepth(cmd);
   if (cmd.getInterruptType() != BreakPointReached &&
       cmd.getInterruptType() != HardBreakPoint) {
     DebuggerProxy::interrupt(cmd);
@@ -741,6 +732,15 @@ void DebuggerProxyVM::interrupt(CmdInterrupt &cmd) {
     }
     g_vmContext->m_lastLocFilter->addRanges(site->getUnit(),
                                             site->getCurOffsetRange());
+    // if the breakpoint is not to be processed, we should continue execution
+    BreakPointInfoPtr bp = getBreakPointAtCmd(cmd);
+    if (bp) {
+      if (!bp->breakable(getRealStackDepth())) {
+        return;
+      } else {
+        bp->unsetBreakable(getRealStackDepth());
+      }
+    }
   }
 
   DebuggerProxy::interrupt(cmd);
@@ -777,10 +777,24 @@ void DebuggerProxyVM::writeInjTablesToThread() {
   g_vmContext->m_injTables = m_injTables->clone();
 }
 
+int DebuggerProxyVM::getRealStackDepth() {
+  int depth = 0;
+  VMExecutionContext* context = g_vmContext;
+  HPHP::VM::ActRec *fp = context->getFP();
+  if (!fp) return 0;
+
+  while (fp != NULL) {
+    fp = context->getPrevVMState(fp, NULL, NULL);
+    depth++;
+  }
+  return depth;
+}
+
 int DebuggerProxyVM::getStackDepth() {
   int depth = 0;
   VMExecutionContext* context = g_vmContext;
   HPHP::VM::ActRec *fp = context->getFP();
+  if (!fp) return 0;
   HPHP::VM::ActRec *prev = context->arGetSfp(fp);
   while (fp != prev) {
     fp = prev;
@@ -793,14 +807,25 @@ int DebuggerProxyVM::getStackDepth() {
 void DebuggerProxyVM::processFlowControl(CmdInterrupt &cmd) {
   switch (m_flow->getType()) {
     case DebuggerCommand::KindOfContinue:
-      if (!m_flow->decCount()) m_flow.reset();
+      if (!m_flow->decCount()) {
+        m_flow.reset();
+      }
       break;
     case DebuggerCommand::KindOfStep:
-      break;
-    case DebuggerCommand::KindOfNext:
+      {
+        // allows the breakpoint to be hit again when returns
+        // from function call
+        BreakPointInfoPtr bp = getBreakPointAtCmd(cmd);
+        if (bp) {
+          bp->setBreakable(getRealStackDepth());
+        }
+        break;
+      }
     case DebuggerCommand::KindOfOut:
+    case DebuggerCommand::KindOfNext:
       m_flow->setStackDepth(getStackDepth());
       m_flow->setVMDepth(g_vmContext->m_nesting);
+      m_flow->setFileLine(cmd.getFileLine());
       break;
     default:
       ASSERT(false);
@@ -808,10 +833,29 @@ void DebuggerProxyVM::processFlowControl(CmdInterrupt &cmd) {
   }
 }
 
+/**
+ * If a breakpoint is set at that depth,
+ * this function clears the current depth information
+ * after the breakpoint has passed
+ */
+
+void DebuggerProxyVM::changeBreakPointDepth(CmdInterrupt& cmd) {
+  for (unsigned int i = 0; i < m_breakpoints.size(); ++i) {
+    // if the site changes, then update the breakpoint depth
+    BreakPointInfoPtr bp = m_breakpoints[i];
+    if (bp->m_state != BreakPointInfo::Disabled &&
+        !bp->match(cmd.getInterruptType(), *cmd.getSite())) {
+      m_breakpoints[i]->changeBreakPointDepth(getRealStackDepth());
+    }
+  }
+}
+
 bool DebuggerProxyVM::breakByFlowControl(CmdInterrupt &cmd) {
   switch (m_flow->getType()) {
     case DebuggerCommand::KindOfStep: {
       if (!m_flow->decCount()) {
+        // if the line changes and the stack depth is the same
+        // pop the breakpoint depth stack
         m_flow.reset();
         return true;
       }
@@ -820,13 +864,16 @@ bool DebuggerProxyVM::breakByFlowControl(CmdInterrupt &cmd) {
     case DebuggerCommand::KindOfNext: {
       int currentVMDepth = g_vmContext->m_nesting;
       int currentStackDepth = getStackDepth();
+
       if (currentVMDepth <= m_flow->getVMDepth() &&
-          currentStackDepth <= m_flow->getStackDepth()) {
-        if (!m_flow->decCount()) {
-          m_flow.reset();
-          return true;
-        }
+          currentStackDepth <= m_flow->getStackDepth() &&
+          m_flow->getFileLine() != cmd.getFileLine()) {
+            if (!m_flow->decCount()) {
+              m_flow.reset();
+              return true;
+            }
       }
+
       break;
     }
     case DebuggerCommand::KindOfOut: {

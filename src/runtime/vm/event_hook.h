@@ -18,14 +18,14 @@
 
 #include "runtime/base/execution_context.h"
 #include "runtime/vm/bytecode.h"
+#include "runtime/vm/translator/targetcache.h"
 
 namespace HPHP {
 namespace VM {
 
 #define DECLARE_HOOK(name, declargs, useargs)                              \
   static inline void name declargs {                                       \
-    if (UNLIKELY(                                                          \
-           ThreadInfo::s_threadInfo->m_reqInjectionData.conditionFlags)) { \
+    if (UNLIKELY(Transl::TargetCache::loadConditionFlags())) {             \
       g_vmContext->m_eventHook->on ## name useargs;                        \
     }                                                                      \
   }                                                                        \
@@ -47,12 +47,22 @@ class EventHook {
   static void Disable();
   static void CheckSurprise();
 
+  /*
+   * Can throw from user-defined signal handlers, or OOM or timeout
+   * exceptions.
+   */
   DECLARE_HOOK(FunctionEnter, (const ActRec* ar, int funcType),
                (ar, funcType));
-  DECLARE_HOOK(FunctionExit, (const ActRec* ar), (ar));
+
+  /*
+   * FunctionExit is nothrow, because we need to be able to call it
+   * while tearing down frames (which might be because an exception is
+   * propagating).
+   */
+  DECLARE_HOOK(FunctionExit, (const ActRec* ar), (ar)); // nothrow
 
 private:
-  static void RunUserProfiler(const ActRec* ar, int mode);
+  static void RunUserProfiler(const ActRec* ar, int mode); // nothrow
 };
 
 #undef DECLARE_HOOK

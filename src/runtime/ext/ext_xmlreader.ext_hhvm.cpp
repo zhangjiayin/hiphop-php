@@ -1,83 +1,36 @@
+/*
+   +----------------------------------------------------------------------+
+   | HipHop for PHP                                                       |
+   +----------------------------------------------------------------------+
+   | Copyright (c) 2010- Facebook, Inc. (http://www.facebook.com)         |
+   | Copyright (c) 1997-2010 The PHP Group                                |
+   +----------------------------------------------------------------------+
+   | This source file is subject to version 3.01 of the PHP license,      |
+   | that is bundled with this package in the file LICENSE, and is        |
+   | available through the world-wide-web at the following url:           |
+   | http://www.php.net/license/3_01.txt                                  |
+   | If you did not receive a copy of the PHP license and are unable to   |
+   | obtain it through the world-wide-web, please send a note to          |
+   | license@php.net so we can mail you a copy immediately.               |
+   +----------------------------------------------------------------------+
+*/
 #include <runtime/ext_hhvm/ext_hhvm.h>
 #include <runtime/base/builtin_functions.h>
 #include <runtime/base/array/array_init.h>
 #include <runtime/ext/ext.h>
 #include <runtime/vm/class.h>
 #include <runtime/vm/runtime.h>
-#include <runtime/vm/exception_gate.h>
 #include <exception>
 
 namespace HPHP {
 
-class c_XMLReader_Instance : public c_XMLReader {
-public:
-  c_XMLReader_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_XMLReader));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_XMLReader) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_XMLReader_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_XMLReader_Instance *this_ = (c_XMLReader_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_XMLReader) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_XMLReader::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_XMLReader::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_XMLReader::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_XMLReader::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
-
 HPHP::VM::Instance* new_XMLReader_Instance(HPHP::VM::Class* cls) {
-  return c_XMLReader_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_XMLReader) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_XMLReader(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -90,7 +43,6 @@ this_ => rdi
 void th_9XMLReader___construct(ObjectData* this_) asm("_ZN4HPHP11c_XMLReader13t___constructEv");
 
 TypedValue* tg_9XMLReader___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -116,7 +68,7 @@ TypedValue* tg_9XMLReader___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -157,7 +109,6 @@ TypedValue* tg1_9XMLReader_open(TypedValue* rv, HPHP::VM::ActRec* ar, long long 
 }
 
 TypedValue* tg_9XMLReader_open(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -189,7 +140,7 @@ TypedValue* tg_9XMLReader_open(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -230,7 +181,6 @@ TypedValue* tg1_9XMLReader_XML(TypedValue* rv, HPHP::VM::ActRec* ar, long long c
 }
 
 TypedValue* tg_9XMLReader_XML(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -262,7 +212,7 @@ TypedValue* tg_9XMLReader_XML(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -276,7 +226,6 @@ this_ => rdi
 bool th_9XMLReader_close(ObjectData* this_) asm("_ZN4HPHP11c_XMLReader7t_closeEv");
 
 TypedValue* tg_9XMLReader_close(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -301,7 +250,7 @@ TypedValue* tg_9XMLReader_close(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -315,7 +264,6 @@ this_ => rdi
 bool th_9XMLReader_read(ObjectData* this_) asm("_ZN4HPHP11c_XMLReader6t_readEv");
 
 TypedValue* tg_9XMLReader_read(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -340,7 +288,7 @@ TypedValue* tg_9XMLReader_read(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -365,7 +313,6 @@ TypedValue* tg1_9XMLReader_next(TypedValue* rv, HPHP::VM::ActRec* ar, long long 
 }
 
 TypedValue* tg_9XMLReader_next(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -397,7 +344,7 @@ TypedValue* tg_9XMLReader_next(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -412,7 +359,6 @@ this_ => rsi
 Value* th_9XMLReader_readString(Value* _rv, ObjectData* this_) asm("_ZN4HPHP11c_XMLReader12t_readstringEv");
 
 TypedValue* tg_9XMLReader_readString(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -438,7 +384,7 @@ TypedValue* tg_9XMLReader_readString(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -453,7 +399,6 @@ this_ => rsi
 Value* th_9XMLReader_readInnerXML(Value* _rv, ObjectData* this_) asm("_ZN4HPHP11c_XMLReader14t_readinnerxmlEv");
 
 TypedValue* tg_9XMLReader_readInnerXML(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -479,7 +424,7 @@ TypedValue* tg_9XMLReader_readInnerXML(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -494,7 +439,6 @@ this_ => rsi
 Value* th_9XMLReader_readOuterXML(Value* _rv, ObjectData* this_) asm("_ZN4HPHP11c_XMLReader14t_readouterxmlEv");
 
 TypedValue* tg_9XMLReader_readOuterXML(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -520,7 +464,7 @@ TypedValue* tg_9XMLReader_readOuterXML(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -534,7 +478,6 @@ this_ => rdi
 bool th_9XMLReader_moveToNextAttribute(ObjectData* this_) asm("_ZN4HPHP11c_XMLReader21t_movetonextattributeEv");
 
 TypedValue* tg_9XMLReader_moveToNextAttribute(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -559,7 +502,7 @@ TypedValue* tg_9XMLReader_moveToNextAttribute(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -584,7 +527,6 @@ TypedValue* tg1_9XMLReader_getAttribute(TypedValue* rv, HPHP::VM::ActRec* ar, lo
 }
 
 TypedValue* tg_9XMLReader_getAttribute(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -615,7 +557,7 @@ TypedValue* tg_9XMLReader_getAttribute(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -640,7 +582,6 @@ TypedValue* tg1_9XMLReader_getAttributeNo(TypedValue* rv, HPHP::VM::ActRec* ar, 
 }
 
 TypedValue* tg_9XMLReader_getAttributeNo(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -671,7 +612,7 @@ TypedValue* tg_9XMLReader_getAttributeNo(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -702,7 +643,6 @@ TypedValue* tg1_9XMLReader_getAttributeNs(TypedValue* rv, HPHP::VM::ActRec* ar, 
 }
 
 TypedValue* tg_9XMLReader_getAttributeNs(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -733,7 +673,7 @@ TypedValue* tg_9XMLReader_getAttributeNs(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -758,7 +698,6 @@ TypedValue* tg1_9XMLReader_moveToAttribute(TypedValue* rv, HPHP::VM::ActRec* ar,
 }
 
 TypedValue* tg_9XMLReader_moveToAttribute(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -790,7 +729,7 @@ TypedValue* tg_9XMLReader_moveToAttribute(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -815,7 +754,6 @@ TypedValue* tg1_9XMLReader_moveToAttributeNo(TypedValue* rv, HPHP::VM::ActRec* a
 }
 
 TypedValue* tg_9XMLReader_moveToAttributeNo(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -847,7 +785,7 @@ TypedValue* tg_9XMLReader_moveToAttributeNo(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -878,7 +816,6 @@ TypedValue* tg1_9XMLReader_moveToAttributeNs(TypedValue* rv, HPHP::VM::ActRec* a
 }
 
 TypedValue* tg_9XMLReader_moveToAttributeNs(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -910,7 +847,7 @@ TypedValue* tg_9XMLReader_moveToAttributeNs(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -924,7 +861,6 @@ this_ => rdi
 bool th_9XMLReader_moveToElement(ObjectData* this_) asm("_ZN4HPHP11c_XMLReader15t_movetoelementEv");
 
 TypedValue* tg_9XMLReader_moveToElement(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -949,7 +885,7 @@ TypedValue* tg_9XMLReader_moveToElement(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -963,7 +899,6 @@ this_ => rdi
 bool th_9XMLReader_moveToFirstAttribute(ObjectData* this_) asm("_ZN4HPHP11c_XMLReader22t_movetofirstattributeEv");
 
 TypedValue* tg_9XMLReader_moveToFirstAttribute(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -988,7 +923,7 @@ TypedValue* tg_9XMLReader_moveToFirstAttribute(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1002,7 +937,6 @@ this_ => rdi
 bool th_9XMLReader_isValid(ObjectData* this_) asm("_ZN4HPHP11c_XMLReader9t_isvalidEv");
 
 TypedValue* tg_9XMLReader_isValid(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1027,7 +961,7 @@ TypedValue* tg_9XMLReader_isValid(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1041,7 +975,6 @@ this_ => rdi
 bool th_9XMLReader_expand(ObjectData* this_) asm("_ZN4HPHP11c_XMLReader8t_expandEv");
 
 TypedValue* tg_9XMLReader_expand(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1066,7 +999,7 @@ TypedValue* tg_9XMLReader_expand(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1082,7 +1015,6 @@ name => rdx
 TypedValue* th_9XMLReader___get(TypedValue* _rv, ObjectData* this_, TypedValue* name) asm("_ZN4HPHP11c_XMLReader7t___getENS_7VariantE");
 
 TypedValue* tg_9XMLReader___get(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1106,7 +1038,7 @@ TypedValue* tg_9XMLReader___get(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1131,7 +1063,6 @@ TypedValue* tg1_9XMLReader_getParserProperty(TypedValue* rv, HPHP::VM::ActRec* a
 }
 
 TypedValue* tg_9XMLReader_getParserProperty(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1163,7 +1094,7 @@ TypedValue* tg_9XMLReader_getParserProperty(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1188,7 +1119,6 @@ TypedValue* tg1_9XMLReader_lookupNamespace(TypedValue* rv, HPHP::VM::ActRec* ar,
 }
 
 TypedValue* tg_9XMLReader_lookupNamespace(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1219,7 +1149,7 @@ TypedValue* tg_9XMLReader_lookupNamespace(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1244,7 +1174,6 @@ TypedValue* tg1_9XMLReader_setSchema(TypedValue* rv, HPHP::VM::ActRec* ar, long 
 }
 
 TypedValue* tg_9XMLReader_setSchema(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1276,7 +1205,7 @@ TypedValue* tg_9XMLReader_setSchema(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1307,7 +1236,6 @@ TypedValue* tg1_9XMLReader_setParserProperty(TypedValue* rv, HPHP::VM::ActRec* a
 }
 
 TypedValue* tg_9XMLReader_setParserProperty(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1339,7 +1267,7 @@ TypedValue* tg_9XMLReader_setParserProperty(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1364,7 +1292,6 @@ TypedValue* tg1_9XMLReader_setRelaxNGSchema(TypedValue* rv, HPHP::VM::ActRec* ar
 }
 
 TypedValue* tg_9XMLReader_setRelaxNGSchema(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1396,7 +1323,7 @@ TypedValue* tg_9XMLReader_setRelaxNGSchema(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1421,7 +1348,6 @@ TypedValue* tg1_9XMLReader_setRelaxNGSchemaSource(TypedValue* rv, HPHP::VM::ActR
 }
 
 TypedValue* tg_9XMLReader_setRelaxNGSchemaSource(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1453,7 +1379,7 @@ TypedValue* tg_9XMLReader_setRelaxNGSchemaSource(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1468,7 +1394,6 @@ this_ => rsi
 TypedValue* th_9XMLReader___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP11c_XMLReader12t___destructEv");
 
 TypedValue* tg_9XMLReader___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1492,7 +1417,7 @@ TypedValue* tg_9XMLReader___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 

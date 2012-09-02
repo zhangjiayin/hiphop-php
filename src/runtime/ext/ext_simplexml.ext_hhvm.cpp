@@ -1,10 +1,25 @@
+/*
+   +----------------------------------------------------------------------+
+   | HipHop for PHP                                                       |
+   +----------------------------------------------------------------------+
+   | Copyright (c) 2010- Facebook, Inc. (http://www.facebook.com)         |
+   | Copyright (c) 1997-2010 The PHP Group                                |
+   +----------------------------------------------------------------------+
+   | This source file is subject to version 3.01 of the PHP license,      |
+   | that is bundled with this package in the file LICENSE, and is        |
+   | available through the world-wide-web at the following url:           |
+   | http://www.php.net/license/3_01.txt                                  |
+   | If you did not receive a copy of the PHP license and are unable to   |
+   | obtain it through the world-wide-web, please send a note to          |
+   | license@php.net so we can mail you a copy immediately.               |
+   +----------------------------------------------------------------------+
+*/
 #include <runtime/ext_hhvm/ext_hhvm.h>
 #include <runtime/base/builtin_functions.h>
 #include <runtime/base/array/array_init.h>
 #include <runtime/ext/ext.h>
 #include <runtime/vm/class.h>
 #include <runtime/vm/runtime.h>
-#include <runtime/vm/exception_gate.h>
 #include <exception>
 
 namespace HPHP {
@@ -57,7 +72,6 @@ TypedValue * fg1_simplexml_load_string(TypedValue* rv, HPHP::VM::ActRec* ar, lon
 }
 
 TypedValue* fg_simplexml_load_string(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -84,7 +98,7 @@ TypedValue* fg_simplexml_load_string(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 5);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -137,7 +151,6 @@ TypedValue * fg1_simplexml_load_file(TypedValue* rv, HPHP::VM::ActRec* ar, long 
 }
 
 TypedValue* fg_simplexml_load_file(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -164,7 +177,7 @@ TypedValue* fg_simplexml_load_file(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 5);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -180,7 +193,6 @@ _rv => rdi
 TypedValue* fh_libxml_get_errors(TypedValue* _rv) asm("_ZN4HPHP19f_libxml_get_errorsEv");
 
 TypedValue* fg_libxml_get_errors(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -199,7 +211,7 @@ TypedValue* fg_libxml_get_errors(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -215,7 +227,6 @@ _rv => rdi
 TypedValue* fh_libxml_get_last_error(TypedValue* _rv) asm("_ZN4HPHP23f_libxml_get_last_errorEv");
 
 TypedValue* fg_libxml_get_last_error(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -234,7 +245,7 @@ TypedValue* fg_libxml_get_last_error(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -248,7 +259,6 @@ _ZN4HPHP21f_libxml_clear_errorsEv
 void fh_libxml_clear_errors() asm("_ZN4HPHP21f_libxml_clear_errorsEv");
 
 TypedValue* fg_libxml_clear_errors(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -269,7 +279,7 @@ TypedValue* fg_libxml_clear_errors(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -285,7 +295,6 @@ use_errors => rdi
 bool fh_libxml_use_internal_errors(TypedValue* use_errors) asm("_ZN4HPHP28f_libxml_use_internal_errorsERKNS_7VariantE");
 
 TypedValue* fg_libxml_use_internal_errors(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -305,7 +314,7 @@ TypedValue* fg_libxml_use_internal_errors(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -331,7 +340,6 @@ TypedValue * fg1_libxml_set_streams_context(TypedValue* rv, HPHP::VM::ActRec* ar
 }
 
 TypedValue* fg_libxml_set_streams_context(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -359,7 +367,7 @@ TypedValue* fg_libxml_set_streams_context(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
@@ -385,7 +393,6 @@ TypedValue * fg1_libxml_disable_entity_loader(TypedValue* rv, HPHP::VM::ActRec* 
 }
 
 TypedValue* fg_libxml_disable_entity_loader(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -412,80 +419,18 @@ TypedValue* fg_libxml_disable_entity_loader(HPHP::VM::ActRec *ar) {
     frame_free_locals_no_this_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 
-
-class c_SimpleXMLElement_Instance : public c_SimpleXMLElement {
-public:
-  c_SimpleXMLElement_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_SimpleXMLElement));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_SimpleXMLElement) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_SimpleXMLElement_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_SimpleXMLElement_Instance *this_ = (c_SimpleXMLElement_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_SimpleXMLElement) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_SimpleXMLElement::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_SimpleXMLElement::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_SimpleXMLElement::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_SimpleXMLElement::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_SimpleXMLElement_Instance(HPHP::VM::Class* cls) {
-  return c_SimpleXMLElement_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_SimpleXMLElement) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_SimpleXMLElement(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -536,7 +481,6 @@ TypedValue* tg1_16SimpleXMLElement___construct(TypedValue* rv, HPHP::VM::ActRec*
 }
 
 TypedValue* tg_16SimpleXMLElement___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -569,7 +513,7 @@ TypedValue* tg_16SimpleXMLElement___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 5);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -584,7 +528,6 @@ index => rsi
 bool th_16SimpleXMLElement_offsetExists(ObjectData* this_, TypedValue* index) asm("_ZN4HPHP18c_SimpleXMLElement14t_offsetexistsERKNS_7VariantE");
 
 TypedValue* tg_16SimpleXMLElement_offsetExists(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -609,7 +552,7 @@ TypedValue* tg_16SimpleXMLElement_offsetExists(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -625,7 +568,6 @@ index => rdx
 TypedValue* th_16SimpleXMLElement_offsetGet(TypedValue* _rv, ObjectData* this_, TypedValue* index) asm("_ZN4HPHP18c_SimpleXMLElement11t_offsetgetERKNS_7VariantE");
 
 TypedValue* tg_16SimpleXMLElement_offsetGet(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -649,7 +591,7 @@ TypedValue* tg_16SimpleXMLElement_offsetGet(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -664,7 +606,6 @@ newvalue => rdx
 void th_16SimpleXMLElement_offsetSet(ObjectData* this_, TypedValue* index, TypedValue* newvalue) asm("_ZN4HPHP18c_SimpleXMLElement11t_offsetsetERKNS_7VariantES3_");
 
 TypedValue* tg_16SimpleXMLElement_offsetSet(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -690,7 +631,7 @@ TypedValue* tg_16SimpleXMLElement_offsetSet(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -704,7 +645,6 @@ index => rsi
 void th_16SimpleXMLElement_offsetUnset(ObjectData* this_, TypedValue* index) asm("_ZN4HPHP18c_SimpleXMLElement13t_offsetunsetERKNS_7VariantE");
 
 TypedValue* tg_16SimpleXMLElement_offsetUnset(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -730,7 +670,7 @@ TypedValue* tg_16SimpleXMLElement_offsetUnset(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -745,7 +685,6 @@ this_ => rsi
 TypedValue* th_16SimpleXMLElement_getIterator(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP18c_SimpleXMLElement13t_getiteratorEv");
 
 TypedValue* tg_16SimpleXMLElement_getIterator(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -769,7 +708,7 @@ TypedValue* tg_16SimpleXMLElement_getIterator(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -783,7 +722,6 @@ this_ => rdi
 long long th_16SimpleXMLElement_count(ObjectData* this_) asm("_ZN4HPHP18c_SimpleXMLElement7t_countEv");
 
 TypedValue* tg_16SimpleXMLElement_count(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -808,7 +746,7 @@ TypedValue* tg_16SimpleXMLElement_count(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -833,7 +771,6 @@ TypedValue* tg1_16SimpleXMLElement_xpath(TypedValue* rv, HPHP::VM::ActRec* ar, l
 }
 
 TypedValue* tg_16SimpleXMLElement_xpath(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -864,7 +801,7 @@ TypedValue* tg_16SimpleXMLElement_xpath(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -895,7 +832,6 @@ TypedValue* tg1_16SimpleXMLElement_registerXPathNamespace(TypedValue* rv, HPHP::
 }
 
 TypedValue* tg_16SimpleXMLElement_registerXPathNamespace(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -927,7 +863,7 @@ TypedValue* tg_16SimpleXMLElement_registerXPathNamespace(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -952,7 +888,6 @@ TypedValue* tg1_16SimpleXMLElement_asXML(TypedValue* rv, HPHP::VM::ActRec* ar, l
 }
 
 TypedValue* tg_16SimpleXMLElement_asXML(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -983,7 +918,7 @@ TypedValue* tg_16SimpleXMLElement_asXML(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1010,7 +945,6 @@ TypedValue* tg1_16SimpleXMLElement_getNamespaces(TypedValue* rv, HPHP::VM::ActRe
 }
 
 TypedValue* tg_16SimpleXMLElement_getNamespaces(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1043,7 +977,7 @@ TypedValue* tg_16SimpleXMLElement_getNamespaces(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1070,7 +1004,6 @@ TypedValue* tg1_16SimpleXMLElement_getDocNamespaces(TypedValue* rv, HPHP::VM::Ac
 }
 
 TypedValue* tg_16SimpleXMLElement_getDocNamespaces(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1103,7 +1036,7 @@ TypedValue* tg_16SimpleXMLElement_getDocNamespaces(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1142,7 +1075,6 @@ TypedValue* tg1_16SimpleXMLElement_children(TypedValue* rv, HPHP::VM::ActRec* ar
 }
 
 TypedValue* tg_16SimpleXMLElement_children(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1175,7 +1107,7 @@ TypedValue* tg_16SimpleXMLElement_children(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1190,7 +1122,6 @@ this_ => rsi
 Value* th_16SimpleXMLElement_getName(Value* _rv, ObjectData* this_) asm("_ZN4HPHP18c_SimpleXMLElement9t_getnameEv");
 
 TypedValue* tg_16SimpleXMLElement_getName(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1216,7 +1147,7 @@ TypedValue* tg_16SimpleXMLElement_getName(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1255,7 +1186,6 @@ TypedValue* tg1_16SimpleXMLElement_attributes(TypedValue* rv, HPHP::VM::ActRec* 
 }
 
 TypedValue* tg_16SimpleXMLElement_attributes(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1288,7 +1218,7 @@ TypedValue* tg_16SimpleXMLElement_attributes(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1329,7 +1259,6 @@ TypedValue* tg1_16SimpleXMLElement_addChild(TypedValue* rv, HPHP::VM::ActRec* ar
 }
 
 TypedValue* tg_16SimpleXMLElement_addChild(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1360,7 +1289,7 @@ TypedValue* tg_16SimpleXMLElement_addChild(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1401,7 +1330,6 @@ TypedValue* tg1_16SimpleXMLElement_addAttribute(TypedValue* rv, HPHP::VM::ActRec
 }
 
 TypedValue* tg_16SimpleXMLElement_addAttribute(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1434,7 +1362,7 @@ TypedValue* tg_16SimpleXMLElement_addAttribute(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 3);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1449,7 +1377,6 @@ this_ => rsi
 Value* th_16SimpleXMLElement___toString(Value* _rv, ObjectData* this_) asm("_ZN4HPHP18c_SimpleXMLElement12t___tostringEv");
 
 TypedValue* tg_16SimpleXMLElement___toString(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1475,7 +1402,7 @@ TypedValue* tg_16SimpleXMLElement___toString(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1491,7 +1418,6 @@ name => rdx
 TypedValue* th_16SimpleXMLElement___get(TypedValue* _rv, ObjectData* this_, TypedValue* name) asm("_ZN4HPHP18c_SimpleXMLElement7t___getENS_7VariantE");
 
 TypedValue* tg_16SimpleXMLElement___get(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1515,7 +1441,7 @@ TypedValue* tg_16SimpleXMLElement___get(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1532,7 +1458,6 @@ value => rcx
 TypedValue* th_16SimpleXMLElement___set(TypedValue* _rv, ObjectData* this_, TypedValue* name, TypedValue* value) asm("_ZN4HPHP18c_SimpleXMLElement7t___setENS_7VariantES1_");
 
 TypedValue* tg_16SimpleXMLElement___set(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1556,7 +1481,7 @@ TypedValue* tg_16SimpleXMLElement___set(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 2);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1571,7 +1496,6 @@ name => rsi
 bool th_16SimpleXMLElement___isset(ObjectData* this_, TypedValue* name) asm("_ZN4HPHP18c_SimpleXMLElement9t___issetENS_7VariantE");
 
 TypedValue* tg_16SimpleXMLElement___isset(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1596,7 +1520,7 @@ TypedValue* tg_16SimpleXMLElement___isset(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1612,7 +1536,6 @@ name => rdx
 TypedValue* th_16SimpleXMLElement___unset(TypedValue* _rv, ObjectData* this_, TypedValue* name) asm("_ZN4HPHP18c_SimpleXMLElement9t___unsetENS_7VariantE");
 
 TypedValue* tg_16SimpleXMLElement___unset(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1636,7 +1559,7 @@ TypedValue* tg_16SimpleXMLElement___unset(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 1);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1651,7 +1574,6 @@ this_ => rsi
 TypedValue* th_16SimpleXMLElement___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP18c_SimpleXMLElement12t___destructEv");
 
 TypedValue* tg_16SimpleXMLElement___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1675,78 +1597,16 @@ TypedValue* tg_16SimpleXMLElement___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_LibXMLError_Instance : public c_LibXMLError {
-public:
-  c_LibXMLError_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_LibXMLError));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_LibXMLError) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_LibXMLError_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_LibXMLError_Instance *this_ = (c_LibXMLError_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_LibXMLError) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_LibXMLError::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_LibXMLError::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_LibXMLError::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_LibXMLError::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_LibXMLError_Instance(HPHP::VM::Class* cls) {
-  return c_LibXMLError_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_LibXMLError) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_LibXMLError(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -1759,7 +1619,6 @@ this_ => rdi
 void th_11LibXMLError___construct(ObjectData* this_) asm("_ZN4HPHP13c_LibXMLError13t___constructEv");
 
 TypedValue* tg_11LibXMLError___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1785,7 +1644,7 @@ TypedValue* tg_11LibXMLError___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1800,7 +1659,6 @@ this_ => rsi
 TypedValue* th_11LibXMLError___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP13c_LibXMLError12t___destructEv");
 
 TypedValue* tg_11LibXMLError___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1824,78 +1682,16 @@ TypedValue* tg_11LibXMLError___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
-
-class c_SimpleXMLElementIterator_Instance : public c_SimpleXMLElementIterator {
-public:
-  c_SimpleXMLElementIterator_Instance (HPHP::VM::Class* cls, unsigned nProps) {
-    DECLARE_STACK_GC_ROOT(ObjectData, this);
-    m_cls = cls;
-    setAttributes(cls->getODAttrs()
-                  | (cls->clsInfo()
-                     ? 0 : IsInstance));
-    m_propVec = (TypedValue *)((uintptr_t)this + sizeof(c_SimpleXMLElementIterator));
-    if (cls->needInitialization()) {
-      cls->initialize();
-    }
-    if (nProps > 0) {
-      if (cls->pinitVec().size() > 0) {
-        initialize(nProps);
-      } else {
-        ASSERT(nProps == cls->declPropInit().size());
-        memcpy(m_propVec, &cls->declPropInit()[0], nProps * sizeof(TypedValue));
-      }
-    }
-  }
-  static HPHP::VM::Instance* new_Instance(HPHP::VM::Class* cls) {
-    size_t nProps = cls->numDeclProperties();
-    size_t builtinPropSize = sizeof(c_SimpleXMLElementIterator) - sizeof(ObjectData);
-    size_t size = sizeForNProps(nProps) + builtinPropSize;
-    HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
-    new ((void *)inst) c_SimpleXMLElementIterator_Instance(cls, nProps);
-    return inst;
-  }
-  void operator delete(void *p) {
-    c_SimpleXMLElementIterator_Instance *this_ = (c_SimpleXMLElementIterator_Instance*)p;
-    size_t nProps = this_->m_cls->numDeclProperties();
-    size_t builtinPropSize UNUSED = sizeof(c_SimpleXMLElementIterator) - sizeof(ObjectData);
-    for (size_t i = 0; i < nProps; ++i) {
-      TypedValue *prop = &this_->m_propVec[i];
-      tvRefcountedDecRef(prop);
-    }
-    DELETEOBJSZ(sizeForNProps(nProps) + builtinPropSize)(this_);
-  }
-  virtual bool o_instanceof(const HPHP::String& s) const {
-    return Instance::o_instanceof(s) || c_SimpleXMLElementIterator::o_instanceof(s);
-  }
-  virtual Variant* o_realProp(CStrRef s, int flags, CStrRef context) const {
-    Variant *v = Instance::o_realProp(s, flags, context);
-    if (v) return v;
-    return c_SimpleXMLElementIterator::o_realProp(s, flags, context);
-  }
-  virtual Variant* o_realPropPublic(CStrRef s, int flags) const {
-    Variant *v = Instance::o_realPropPublic(s, flags);
-    if (v) return v;
-    return c_SimpleXMLElementIterator::o_realPropPublic(s, flags);
-  }
-  virtual void o_setArray(CArrRef props) {
-    ClassInfo::SetArray(this, o_getClassPropTable(), props);
-  }
-  virtual void o_getArray(Array &props, bool pubOnly) const {
-    ClassInfo::GetArray(this, o_getClassPropTable(), props, false);
-}
-  virtual ObjectData* cloneImpl() {
-    return Instance::cloneImpl();
-  }
-  virtual void cloneSet(ObjectData *clone) {
-    c_SimpleXMLElementIterator::cloneSet(clone);
-    Instance::cloneSet(clone);
-  }
-};
 
 HPHP::VM::Instance* new_SimpleXMLElementIterator_Instance(HPHP::VM::Class* cls) {
-  return c_SimpleXMLElementIterator_Instance::new_Instance(cls);
+  size_t nProps = cls->numDeclProperties();
+  size_t builtinPropSize = sizeof(c_SimpleXMLElementIterator) - sizeof(ObjectData);
+  size_t size = HPHP::VM::Instance::sizeForNProps(nProps) + builtinPropSize;
+  HPHP::VM::Instance *inst = (HPHP::VM::Instance*)ALLOCOBJSZ(size);
+  new ((void *)inst) c_SimpleXMLElementIterator(ObjectStaticCallbacks::encodeVMClass(cls));
+  return inst;
 }
 
 /*
@@ -1908,7 +1704,6 @@ this_ => rdi
 void th_24SimpleXMLElementIterator___construct(ObjectData* this_) asm("_ZN4HPHP26c_SimpleXMLElementIterator13t___constructEv");
 
 TypedValue* tg_24SimpleXMLElementIterator___construct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1934,7 +1729,7 @@ TypedValue* tg_24SimpleXMLElementIterator___construct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1949,7 +1744,6 @@ this_ => rsi
 TypedValue* th_24SimpleXMLElementIterator_current(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP26c_SimpleXMLElementIterator9t_currentEv");
 
 TypedValue* tg_24SimpleXMLElementIterator_current(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -1973,7 +1767,7 @@ TypedValue* tg_24SimpleXMLElementIterator_current(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -1988,7 +1782,6 @@ this_ => rsi
 TypedValue* th_24SimpleXMLElementIterator_key(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP26c_SimpleXMLElementIterator5t_keyEv");
 
 TypedValue* tg_24SimpleXMLElementIterator_key(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2012,7 +1805,7 @@ TypedValue* tg_24SimpleXMLElementIterator_key(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -2027,7 +1820,6 @@ this_ => rsi
 TypedValue* th_24SimpleXMLElementIterator_next(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP26c_SimpleXMLElementIterator6t_nextEv");
 
 TypedValue* tg_24SimpleXMLElementIterator_next(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2051,7 +1843,7 @@ TypedValue* tg_24SimpleXMLElementIterator_next(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -2066,7 +1858,6 @@ this_ => rsi
 TypedValue* th_24SimpleXMLElementIterator_rewind(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP26c_SimpleXMLElementIterator8t_rewindEv");
 
 TypedValue* tg_24SimpleXMLElementIterator_rewind(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2090,7 +1881,7 @@ TypedValue* tg_24SimpleXMLElementIterator_rewind(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -2105,7 +1896,6 @@ this_ => rsi
 TypedValue* th_24SimpleXMLElementIterator_valid(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP26c_SimpleXMLElementIterator7t_validEv");
 
 TypedValue* tg_24SimpleXMLElementIterator_valid(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2129,7 +1919,7 @@ TypedValue* tg_24SimpleXMLElementIterator_valid(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 /*
@@ -2144,7 +1934,6 @@ this_ => rsi
 TypedValue* th_24SimpleXMLElementIterator___destruct(TypedValue* _rv, ObjectData* this_) asm("_ZN4HPHP26c_SimpleXMLElementIterator12t___destructEv");
 
 TypedValue* tg_24SimpleXMLElementIterator___destruct(HPHP::VM::ActRec *ar) {
-  EXCEPTION_GATE_ENTER();
     TypedValue rv;
     long long count = ar->numArgs();
     TypedValue* args UNUSED = ((TypedValue*)ar) - 1;
@@ -2168,7 +1957,7 @@ TypedValue* tg_24SimpleXMLElementIterator___destruct(HPHP::VM::ActRec *ar) {
     frame_free_locals_inl(ar, 0);
     memcpy(&ar->m_r, &rv, sizeof(TypedValue));
     return &ar->m_r;
-  EXCEPTION_GATE_RETURN(&ar->m_r);
+  return &ar->m_r;
 }
 
 

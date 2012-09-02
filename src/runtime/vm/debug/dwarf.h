@@ -13,8 +13,8 @@
    | license@php.net so we can mail you a copy immediately.               |
    +----------------------------------------------------------------------+
 */
-#ifndef _DWARF_H_
-#define _DWARF_H_
+#ifndef _HPHP_DWARF_H_
+#define _HPHP_DWARF_H_
 
 #include <string>
 
@@ -50,17 +50,53 @@ typedef enum {
   RIP
 } x86_64_regnum_t;
 
-#define STACK_GROWTH_DIR                       -1
-#define DWARF_CODE_ALIGN                        1
-#define DWARF_DATA_ALIGN                        8
+const int DWARF_CODE_ALIGN = 1;
+const int DWARF_DATA_ALIGN = 8;
 
 extern int g_dwarfCallback(char *name, int size, Dwarf_Unsigned type,
   Dwarf_Unsigned flags, Dwarf_Unsigned link, Dwarf_Unsigned info,
   Dwarf_Unsigned *sect_name_index, Dwarf_Ptr handle, int *error);
 
+class TCRange {
+  TCA m_start, m_end;
+  bool m_isAstubs;
+  void V() const { ASSERT(isValid()); }
+ public:
+  TCRange() : m_start(NULL), m_end(NULL), m_isAstubs(false) {
+    ASSERT(!isValid());
+  }
+  TCRange(const TCA start, const TCA end, bool isAstubs) :
+    m_start(start), m_end(end), m_isAstubs(isAstubs) { V(); }
+
+  TCRange& operator=(const TCRange& r) {
+    m_start = r.m_start;
+    m_end = r.m_end;
+    m_isAstubs = r.m_isAstubs;
+    V();
+    return *this;
+  }
+
+  bool isValid() const {
+    ASSERT(bool(m_start) == bool(m_end));
+    ASSERT(!m_start || m_start < m_end);
+    ASSERT(!m_start || (m_end - m_start) < (1ll << 32));
+    return bool(m_start);
+  }
+  bool isAstubs() const { return m_isAstubs; }
+  const TCA begin() const { V(); return m_start; }
+  const TCA end() const   { V(); return m_end; };
+  uint32_t size() const   { V(); return m_end - m_start; }
+
+  void extend(const TCA newEnd) {
+    ASSERT(newEnd >= m_end);
+    m_end = newEnd;
+    V();
+  }
+};
+
 struct DwarfBuf {
   vector<uint8_t> m_buf;
-  DwarfBuf();
+
   void byte(uint8_t c);
   void byte(int off, uint8_t c);
   void word(uint16_t w);
@@ -85,10 +121,9 @@ struct DwarfBuf {
 };
 
 struct LineEntry {
-  TCA start;
-  TCA end;
+  TCRange range;
   int lineNumber;
-  LineEntry(TCA s, TCA e, int l) : start(s), end(e), lineNumber(l) {}
+  LineEntry(TCRange r, int l) : range(r), lineNumber(l) {}
 };
 
 struct DwarfChunk;
@@ -96,15 +131,14 @@ struct DwarfChunk;
 struct FunctionInfo {
   std::string name;
   const char *file;
-  TCA start;
-  TCA end;
+  TCRange range;
   bool exit;
   bool m_perfSynced;
   std::vector<LineEntry> m_lineTable;
   DwarfChunk* m_chunk;
-  FunctionInfo() : m_chunk(NULL) {}
-  FunctionInfo(TCA s, TCA e, bool ex)
-    : start(s), end(e), exit(ex), m_perfSynced(false), m_chunk(NULL) {}
+  FunctionInfo() : m_chunk(NULL) { }
+  FunctionInfo(TCRange r, bool ex)
+    : range(r), exit(ex), m_perfSynced(false), m_chunk(NULL) {}
   void setPerfSynced() { m_perfSynced = true; }
   void clearPerfSynced() { m_perfSynced = false; }
   bool perfSynced() const { return m_perfSynced; }
@@ -135,15 +169,15 @@ struct DwarfInfo {
    * that it can be partially full. All other chunks are completely full.
    */
   FuncDB m_functions;
-  DwarfInfo();
 
   const char *lookupFile(const Unit *unit);
-  void addLineEntries(TCA start, TCA end, const Unit *unit,
-    const Opcode *instr, FunctionInfo* f);
+  void addLineEntries(TCRange range, const Unit *unit,
+		      const Opcode *instr, FunctionInfo* f);
   void transferFuncs(DwarfChunk* from, DwarfChunk* to);
   void compactChunks();
-  DwarfChunk* addTracelet(TCA start, TCA end, const char* name,
-    const Unit *unit, const Opcode *instr, bool exit, bool inPrologue);
+  DwarfChunk* addTracelet(TCRange range, const char* name,
+			  const Unit *unit, const Opcode *instr,
+			  bool exit, bool inPrologue);
   void syncChunks();
 };
 

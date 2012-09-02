@@ -38,8 +38,8 @@ quiet quiet-%:
 ###############################################################################
 # The exact revision of external repositories that HPHP builds against.
 
-FBCODE_REV = 437f4af63d462990f0e8e0fbfcec084701dbcf87
-FBCODE_THIRD_PARTY_REV = d975d837c121c6920278a63c8714e5963e10169e
+FBCODE_REV = 0c8b962b192eb655b7da1d9dcc1730427705c160
+FBCODE_THIRD_PARTY_REV = 1b76b1fdef117650883ae1568fcf2777ad9a00c1
 
 ifndef FBCODE_EXTERNALS_ROOT
 FBCODE_EXTERNALS_ROOT = /mnt/gvfs/third-party/$(FBCODE_THIRD_PARTY_REV)

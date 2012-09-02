@@ -38,13 +38,12 @@ struct Value {
   mutable union {
     int64       num;
     double      dbl;
-    litstr      str;
     StringData *pstr;
     ArrayData  *parr;
     ObjectData *pobj;
     VM::Class  *pcls;
-    Variant    *pvar;
-    TypedValue *ptv;
+    RefData    *pref;
+    TypedValue *ptv; // Deprecated; use pref for KindOfRef
   } m_data;
 };
 

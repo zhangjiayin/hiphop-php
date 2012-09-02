@@ -37,8 +37,7 @@ SimpleVariable::SimpleVariable
     m_name(name), m_docComment(docComment),
     m_sym(NULL), m_originalSym(NULL),
     m_this(false), m_globals(false),
-    m_superGlobal(false), m_alwaysStash(false),
-    m_guarded(false) {
+    m_superGlobal(false), m_alwaysStash(false) {
   setContext(Expression::NoLValueWrapper);
 }
 
@@ -205,7 +204,7 @@ static inline TypePtr GetAssertedInType(AnalysisResultPtr ar,
                                         TypePtr ret) {
   ASSERT(assertedType);
   if (!ret) return assertedType;
-  TypePtr res = Type::Inferred(ar, assertedType, ret);
+  TypePtr res = Type::Inferred(ar, ret, assertedType);
   // if the asserted type and the symbol table type are compatible, then use
   // the result of Inferred() (which is at least as strict as assertedType).
   // otherwise, go with the asserted type
@@ -245,6 +244,9 @@ TypePtr SimpleVariable::inferAndCheck(AnalysisResultPtr ar, TypePtr type,
     }
     if (!hasContext(ObjectContext) &&
         variables->getAttribute(VariableTable::ContainsDynamicVariable)) {
+      if (variables->getAttribute(VariableTable::ContainsLDynamicVariable)) {
+        ret = Type::Variant;
+      }
       ret = variables->add(m_sym, ret, true, ar,
                            construct, scope->getModifiers());
     }

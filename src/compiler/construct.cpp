@@ -294,6 +294,11 @@ void Construct::dumpNode(int spc) {
       } else {
         type_info += ";";
       }
+      if (e->getAssertedType()) {
+        type_info += "!" + e->getAssertedType()->toString();
+      } else {
+        type_info += "!";
+      }
       type_info = "{" + type_info + "} ";
     }
   } else {
@@ -362,15 +367,17 @@ void Construct::dumpNode(int spc) {
   if (dynamic_cast<SimpleVariable*>(this) != NULL) {
     if (isReferencedValid()) {
       if (isReferenced()) {
-        refstr += "Referenced";
+        refstr += ",Referenced";
       } else {
-        refstr += "NotReferenced";
+        refstr += ",NotReferenced";
       }
-    } else {
-      refstr = "NoRefInfo";
     }
+    if (!maybeRefCounted()) refstr += ",NotRefCounted";
+    if (!maybeInited()) refstr += ",NotInited";
+    if (isNonNull()) refstr += ",NotNull";
+    if (refstr.empty()) refstr = ",NoRefInfo";
   }
-  if (refstr != "") refstr = " (" + refstr + ")";
+  if (refstr != "") refstr = " (" + refstr.substr(1) + ")";
 
   string objstr;
   if (dynamic_cast<SimpleVariable*>(this) != NULL) {

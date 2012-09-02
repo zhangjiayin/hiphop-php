@@ -28,6 +28,9 @@ namespace Transl {
 namespace TargetCache {
 
 void requestInit(void);
+void requestExit(void);
+void threadInit(void);
+void threadExit(void);
 
 /*
  * The targetCaches are physically thread-private, but they share their
@@ -36,6 +39,8 @@ void requestInit(void);
  */
 extern __thread HPHP::x64::DataBlock tl_targetCaches;
 extern size_t s_frontier;
+
+static const int kConditionFlagsOff = 0;
 
 /*
  * Some caches have different numbers of lines. This is our default.
@@ -105,6 +110,19 @@ static inline void*
 handleToPtr(CacheHandle h) {
   ASSERT(h < kNumTargetCacheBytes);
   return tl_targetCaches.base + h;
+}
+
+template<class T>
+T& handleToRef(CacheHandle h) {
+  return *static_cast<T*>(handleToPtr(h));
+}
+
+inline ssize_t* conditionFlagsPtr() {
+  return ((ssize_t*)handleToPtr(kConditionFlagsOff));
+}
+
+inline ssize_t loadConditionFlags() {
+  return atomic_acquire_load(conditionFlagsPtr());
 }
 
 void invalidateForRename(const StringData* name);
@@ -240,6 +258,13 @@ typedef Cache<StringData*, const Class*, StringData*, NSClass> ClassCache;
  */
 static const int kPropCacheLines = 8;
 
+typedef void (*pcb_lookup_func_t)(CacheHandle handle, ObjectData* base,
+                                  StringData* name, TypedValue* stackPtr,
+                                  ActRec* fp);
+typedef void (*pcb_set_func_t)(CacheHandle ch, ObjectData* base,
+                               StringData* name, int64 val,
+                               DataType type, ActRec* fp);
+
 template<typename Key, PHPNameSpace ns = NSInvalid>
 class PropCacheBase : public Cache<Key, uintptr_t, ObjectData*, ns,
                                    kPropCacheLines> {
@@ -247,14 +272,14 @@ public:
   typedef Cache<Key, uintptr_t, ObjectData*, ns, kPropCacheLines> Parent;
 
   template<bool baseIsLocal>
-  static TypedValue* lookup(CacheHandle handle, ObjectData* base,
-                            StringData* name, TypedValue* stackPtr,
-                            ActRec* fp);
+  static void lookup(CacheHandle handle, ObjectData* base,
+                     StringData* name, TypedValue* stackPtr,
+                     ActRec* fp);
 
   template<bool baseIsLocal>
-  static TypedValue* set(CacheHandle ch, ObjectData* base,
-                         StringData* name, int64 val,
-                         DataType type, ActRec* fp);
+  static void set(CacheHandle ch, ObjectData* base,
+                  StringData* name, int64 val,
+                  DataType type, ActRec* fp);
 
   static inline void incStat();
 };
@@ -274,10 +299,10 @@ enum NameState {
 
 // These functions allocate a CacheHandle of the appropriate type and
 // return a pointer to the C++ helper to call.
-void* propLookupPrep(CacheHandle& ch, const StringData* name,
-                     HomeState hs, CtxState cs, NameState ns);
-void* propSetPrep(CacheHandle& ch, const StringData* name,
-                  HomeState hs, CtxState cs, NameState ns);
+pcb_lookup_func_t propLookupPrep(CacheHandle& ch, const StringData* name,
+                                 HomeState hs, CtxState cs, NameState ns);
+pcb_set_func_t propSetPrep(CacheHandle& ch, const StringData* name,
+                           HomeState hs, CtxState cs, NameState ns);
 
 struct PropKey {
   Class* cls;
@@ -351,10 +376,7 @@ typedef PropCacheBase<PropCtxNameKey> PropCtxNameCache;
  *   only if the lookup was successful (or a global was created).
  */
 class GlobalCache {
-  HphpArray* m_globals;
-  int m_hint;
-
-  void checkGlobals();
+  TypedValue* m_tv;
 
 protected:
   static inline GlobalCache* cacheAtHandle(CacheHandle handle) {
@@ -369,7 +391,8 @@ public:
     return ptrToHandle(this);
   }
 
-  static CacheHandle alloc(const StringData* sd = NULL) {
+  static CacheHandle alloc(const StringData* sd) {
+    ASSERT(sd);
     return namedAlloc<NSGlobal>(sd, sizeof(GlobalCache), sizeof(GlobalCache));
   }
 
@@ -383,7 +406,7 @@ public:
    * Note: the returned pointer is a pointer to the outer variant.
    * You'll need to incref (or whatever) it yourself (if desired) and
    * emitDeref if you are going to put it in a register associated
-   * with some vm location.  (Note that KindOfVariant in-register
+   * with some vm location.  (Note that KindOfRef in-register
    * values are the pointers to inner items.)
    */
   static TypedValue* lookup(CacheHandle handle, StringData* nm);
@@ -397,6 +420,9 @@ public:
  * the class name is known at translation time.
  */
 CacheHandle allocKnownClass(const StringData* name);
+typedef Class* (*lookupKnownClass_func_t)(Class** cache,
+                                          const StringData* clsName,
+                                          bool isClass);
 template<bool checkOnly>
 Class* lookupKnownClass(Class** cache, const StringData* clsName,
                         bool isClass);
@@ -439,6 +465,7 @@ private:
   static inline SPropCache* cacheAtHandle(CacheHandle handle) {
     return (SPropCache*)(uintptr_t(tl_targetCaches.base) + handle);
   }
+  CacheHandle allocConstantLocked(StringData* name);
 public:
   TypedValue* m_tv;  // public; it is used from TC and we assert the offset
   static CacheHandle alloc(const StringData* sd = NULL) {

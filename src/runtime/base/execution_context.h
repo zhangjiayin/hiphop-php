@@ -34,8 +34,6 @@
 #include <util/thread_local.h>
 #include <setjmp.h>
 
-#include <runtime/eval/base/ast_ptr.h>
-
 #define PHP_OUTPUT_HANDLER_START  (1<<0)
 #define PHP_OUTPUT_HANDLER_CONT   (1<<1)
 #define PHP_OUTPUT_HANDLER_END    (1<<2)
@@ -236,6 +234,7 @@ public:
    */
   Transport *getTransport() { return m_transport;}
   void setTransport(Transport *transport) { m_transport = transport;}
+  std::string getRequestUrl(size_t szLimit = std::string::npos);
   String getMimeType() const;
   void setContentType(CStrRef mimetype, CStrRef charset);
   int64 getRequestMemoryMaxBytes() const { return m_maxMemory; }
@@ -427,9 +426,6 @@ public:
   typedef std::set<HPHP::ObjectData*> LiveObjSet;
   LiveObjSet m_liveBCObjs;
 
-private:
-  VM::Transl::Translator* m_transl;
-
 public:
   void requestInit();
   void requestExit();
@@ -445,6 +441,7 @@ public:
   static int unpackContinuation(c_GenericContinuation* cont, TypedValue* dest);
   static void packContinuation(c_GenericContinuation* cont, VM::ActRec* fp,
                                TypedValue* value, int label);
+  void pushLocalsAndIterators(const HPHP::VM::Func* f, int nparams = 0);
 
 private:
   enum VectorLeaveCode {
@@ -454,6 +451,7 @@ private:
   template <bool warn, bool saveResult, VectorLeaveCode mleave>
   void getHelperPre(VM::PC& pc, unsigned& ndiscard,
                     TypedValue*& base, bool& baseStrOff, TypedValue& tvScratch,
+                    TypedValue& tvLiteral,
                     TypedValue& tvRef, TypedValue& tvRef2,
                     VM::MemberCode& mcode, TypedValue*& curMember);
   template <bool saveResult>
@@ -462,13 +460,15 @@ private:
                      TypedValue& tvRef2);
   void getHelper(VM::PC& pc, unsigned& ndiscard, TypedValue*& tvRet,
                  TypedValue*& base, bool& baseStrOff, TypedValue& tvScratch,
+                 TypedValue& tvLiteral,
                  TypedValue& tvRef, TypedValue& tvRef2,
                  VM::MemberCode& mcode, TypedValue*& curMember);
 
-  template <bool warn, bool define, bool unset, unsigned mdepth,
+  template <bool warn, bool define, bool unset, bool reffy, unsigned mdepth,
             VectorLeaveCode mleave>
   bool setHelperPre(VM::PC& pc, unsigned& ndiscard, TypedValue*& base,
                     bool& baseStrOff, TypedValue& tvScratch,
+                    TypedValue& tvLiteral,
                     TypedValue& tvRef, TypedValue& tvRef2,
                     VM::MemberCode& mcode, TypedValue*& curMember);
   template <unsigned mdepth>
@@ -479,7 +479,6 @@ private:
   void iop##name(HPHP::VM::PC& pc);
 OPCODES
 #undef O
-  void pushLocalsAndIterators(const HPHP::VM::Func* f, int nparams = 0);
 
   template<bool raise>
   void contSendImpl();
@@ -558,7 +557,8 @@ public:
   static void DumpStack();
   static void DumpCurUnit(int skip = 0);
 
-  std::list<HPHP::VM::VarEnv*> m_varEnvs;
+  VM::VarEnv* m_globalVarEnv;
+  VM::VarEnv* m_topVarEnv;
 
   HPHP::VM::RenamedFuncDict m_renamedFuncs;
   EvaledFilesMap m_evaledFiles;
@@ -586,7 +586,6 @@ public:
 #endif
 #undef NEAR_FIELD_DECL
   HPHP::VM::ActRec* m_firstAR;
-  bool m_halted;
   std::vector<HPHP::VM::Fault> m_faults;
 
   HPHP::VM::ActRec* getStackFrame();
@@ -602,7 +601,6 @@ public:
   bool renameFunction(const StringData* oldName, const StringData* newName);
   bool isFunctionRenameable(const StringData* name);
   void addRenameableFunctions(ArrayData* arr);
-  bool mergeUnit(HPHP::VM::Unit* unit);
   HPHP::Eval::PhpFile* lookupPhpFile(
       StringData* path, const char* currentDir, bool* initial = NULL);
   HPHP::VM::Unit* evalInclude(StringData* path,
@@ -624,32 +622,25 @@ public:
   bool getCallInfoStatic(const CallInfo *&ci, void *&extra,
                          const StringData *cls, const StringData *func);
   int m_lambdaCounter;
-  std::vector<jmp_buf *> m_jmpBufs;
-  enum {
-    SETJMP = 0,
-    LONGJUMP_PROPAGATE,
-    LONGJUMP_RESUMEVM,
-    LONGJUMP_DEBUGGER
+  struct ReentryRecord {
+    VMState m_savedState;
+    const VM::ActRec* m_entryFP;
+    ReentryRecord(const VMState &s, const VM::ActRec* entryFP) :
+        m_savedState(s), m_entryFP(entryFP) { }
+    ReentryRecord() {}
   };
-  std::vector<VMState> m_nestedVMs;
-
-  typedef hphp_hash_map<const HPHP::VM::ActRec*, int,
-                        pointer_hash<HPHP::VM::ActRec> > NestedVMMap;
-  NestedVMMap m_nestedVMMap; // Given an ActRec* whose previous frame is a
-                             // native frame, this function will give the
-                             // index into m_nestedVMs corresponding to the
-                             // previous VM.
+  typedef TinyVector<ReentryRecord, 32> NestedVMVec;
+  NestedVMVec m_nestedVMs;
 
   int m_nesting;
   bool isNested() { return m_nesting != 0; }
-  void pushVMState(VMState &savedVM);
+  void pushVMState(VMState &savedVM, const VM::ActRec* reentryAR);
   void popVMState();
 
-  void hhvmThrow(int longJumpType) ATTRIBUTE_NORETURN;
   int hhvmPrepareThrow();
-  HPHP::VM::ActRec* getPrevVMState(const HPHP::VM::ActRec* fp,
-                                   HPHP::VM::Offset* prevPc = NULL,
-                                   TypedValue** prevSp = NULL);
+  VM::ActRec* getPrevVMState(const VM::ActRec* fp,
+                             VM::Offset* prevPc = NULL,
+                             TypedValue** prevSp = NULL);
   Array debugBacktrace(bool skip = false,
                        bool withSelf = false,
                        bool withThis = false,
@@ -668,14 +659,14 @@ public:
   void doFCall(HPHP::VM::ActRec* ar, HPHP::VM::PC& pc);
   CVarRef getEvaledArg(const StringData* val);
 private:
-  void enterVMWork(HPHP::VM::ActRec* ar, bool enterFn);
+  void enterVMWork(VM::ActRec* enterFnAr);
   void enterVM(TypedValue* retval,
                HPHP::VM::ActRec* ar,
                TypedValue* extraArgs);
   void unwindBuiltinFrame();
   template <bool reenter, bool handle_throw>
-  bool prepareFuncEntry(HPHP::VM::ActRec *ar, HPHP::VM::PC& pc);
-  void recordCodeCoverage(HPHP::VM::PC pc);
+  bool prepareFuncEntry(VM::ActRec* ar, VM::PC& pc, TypedValue* extraArgs);
+  void recordCodeCoverage(VM::PC pc);
   int m_coverPrevLine;
   HPHP::VM::Unit* m_coverPrevUnit;
   Array m_evaledArgs;
@@ -730,8 +721,6 @@ OPCODES
 
   // dispatchBB() tries to run until a control-flow instruction has been run.
   void dispatchBB();
-
-  inline bool isHalted() { return m_halted; }
 
 private:
   VM::PreConstVec m_preConsts;

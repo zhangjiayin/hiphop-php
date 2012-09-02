@@ -53,6 +53,10 @@ class FrameInjectionVM {
   void setStaticClassName(CStrRef cls) {
     assert(false);
   }
+
+  ThreadInfo* getThreadInfo() const { 
+    assert(false);
+  }
 };
 
 class FrameInjection {
@@ -61,12 +65,10 @@ public:
     PseudoMain      =  1 << 0,
     BuiltinFunction =  1 << 1,
     BreakPointHit   =  1 << 2,
-    EvalFrame       =  1 << 3,
-    Function        =  1 << 4,
-    StaticMethod    =  1 << 5,
-    ObjectMethod    =  1 << 6,
-    ParserFrame     =  1 << 7
- };
+    Function        =  1 << 3,
+    StaticMethod    =  1 << 4,
+    ObjectMethod    =  1 << 5
+  };
 
   static ObjectData *GetObjectV(const FrameInjection *fi);
   static CStrRef GetClassName(bool skip = false);
@@ -76,7 +78,6 @@ public:
   static Array GetBacktrace(bool skip = false, bool withSelf = false,
                             bool withThis = true);
   static Array GetCallerInfo(bool skip = false);
-  static Eval::VariableEnvironment *GetVariableEnvironment(bool skip = false);
   static int GetLine(bool skip = false);
 
   // what does "static::" resolve to?
@@ -164,8 +165,6 @@ public:
   void setBreakPointHit() { m_flags |= BreakPointHit;}
   ThreadInfo* getThreadInfo() const { return m_info;}
 
-  bool isEvalFrame() const { return m_flags & EvalFrame; }
-  bool isParserFrame() const { return m_flags & ParserFrame; }
   bool isFunctionFrame() const { return m_flags & Function; }
   bool isStaticMethodFrame() const { return m_flags & StaticMethod; }
   bool isObjectMethodFrame() const { return m_flags & ObjectMethod; }
@@ -175,7 +174,7 @@ public:
   void resetStaticClassName() { m_staticClass = NULL; }
 
   /**
-   * Complex accessors. EvalFrameInjection overwrites these.
+   * Complex accessors.
    */
   String getFileName();
   Array getArgs();

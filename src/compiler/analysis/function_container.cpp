@@ -279,7 +279,7 @@ void FunctionContainer::outputGetCallInfoHeader(CodeGenerator &cg,
                                                 const char *suffix,
                                                 bool needGlobals) {
   cg_indentBegin("bool get_call_info%s(const CallInfo *&ci, void *&extra, "
-      "const char *s, int64 hash) {\n", suffix ? suffix : "");
+      "const char *s, strhash_t hash) {\n", suffix ? suffix : "");
 
   if (needGlobals) cg.printDeclareGlobals();
   cg_printf("extra = NULL;\n");
@@ -288,10 +288,6 @@ void FunctionContainer::outputGetCallInfoHeader(CodeGenerator &cg,
                   Option::EnableEval == Option::FullEval)) {
     cg_printf("const char *ss = get_renamed_function(s);\n");
     cg_printf("if (ss != s) { s = ss; hash = -1;};\n");
-  }
-  if (!suffix && Option::EnableEval == Option::FullEval) {
-    cg_printf("if (eval_get_call_info_hook(ci, extra, s, hash)) "
-              "return true;\n");
   }
 }
 
@@ -313,7 +309,7 @@ void FunctionContainer::outputCPPHashTableGetCallInfo(
   const char text1[] =
     "\n"
     "struct hashNodeFunc {\n"
-    "  int64 hash;\n"
+    "  strhash_t hash;\n"
     "  bool offset;\n"
     "  bool end;\n"
     "  const char *name;\n"
@@ -323,7 +319,7 @@ void FunctionContainer::outputCPPHashTableGetCallInfo(
 
   const char text3[] =
     "static inline const hashNodeFunc *"
-    "findFunc(const char *name, int64 hash) {\n"
+    "findFunc(const char *name, strhash_t hash) {\n"
     "  const hashNodeFunc *p = funcMapTable[hash & %d];\n"
     "  if (UNLIKELY(!p)) return NULL;\n"
     "  do {\n"
@@ -381,7 +377,7 @@ void FunctionContainer::outputCPPHashTableGetCallInfo(
       // (e.g., call_user_func0 ~ call_user_func6)
       if (strstr(name, "..")) assert(false);
       FunctionScopePtr func = iterFuncs->second;
-      cg_printf(" {0x%016llXLL,%d,%d,\"%s\",",
+      cg_printf(" {" STRHASH_FMT ",%d,%d,\"%s\",",
                 hash_string_i(name),
                 (int)func->isRedeclaring(), (int)jt.last(),
                 CodeGenerator::EscapeLabel(name).c_str());
@@ -458,7 +454,7 @@ void FunctionContainer::outputCPPCodeInfoTable(
     StringToFunctionScopePtrMap::const_iterator iterFuncs =
       functions.find(name);
     ASSERT(iterFuncs != functions.end());
-    cg_indentBegin("HASH_GUARD(0x%016llXLL, %s) {\n",
+    cg_indentBegin("HASH_GUARD(" STRHASH_FMT ", %s) {\n",
                    hash_string_i(name),
                    CodeGenerator::EscapeLabel(name).c_str());
     if (iterFuncs->second->isRedeclaring()) {

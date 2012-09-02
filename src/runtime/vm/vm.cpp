@@ -41,12 +41,20 @@ const long long hhbc_ext_class_count = 0;
 const HhbcExtClassInfo hhbc_ext_classes[] = {};
 #endif
 namespace VM {
+
 ///////////////////////////////////////////////////////////////////////////////
 
 static StaticString s_stdclass(LITSTR_INIT("stdclass"));
 static StaticString s_Exception(LITSTR_INIT("Exception"));
 static StaticString s_BadMethodCallException(
   LITSTR_INIT("BadMethodCallException"));
+static StaticString s_InvalidArgumentException(
+  LITSTR_INIT("InvalidArgumentException"));
+static StaticString s_RuntimeException(LITSTR_INIT("RuntimeException"));
+static StaticString s_OutOfBoundsException(
+  LITSTR_INIT("OutOfBoundsException"));
+static StaticString s_InvalidOperationException(
+  LITSTR_INIT("InvalidOperationException"));
 static StaticString s_Directory(LITSTR_INIT("Directory"));
 static StaticString s_RecursiveDirectoryIterator(
   LITSTR_INIT("RecursiveDirectoryIterator"));
@@ -103,9 +111,12 @@ static VMClassInfoHook vm_class_info_hook;
 void ProcessInit() {
   // Initialize compiler state
   VM::compile_file(0, 0, MD5(), 0);
+
   // Install VM's ClassInfoHook
   ClassInfo::SetHook(&vm_class_info_hook);
-  VM::Transl::Translator::Get()->processInit();
+
+  // ensure that nextTx64 and tx64 are set
+  (void)VM::Transl::Translator::Get();
 
   Transl::TargetCache::requestInit();
 
@@ -182,10 +193,10 @@ void ProcessInit() {
   SystemLib::s_unit = file->unit();
 
   // Load the systemlib unit to build the Class objects
-  g_vmContext->mergeUnit(SystemLib::s_unit);
+  SystemLib::s_unit->merge();
 
   // load builtins
-  g_vmContext->mergeUnit(SystemLib::s_nativeFuncUnit);
+  SystemLib::s_nativeFuncUnit->merge();
 
 #define INIT_SYSTEMLIB_CLASS_FIELD(cls)                                 \
   {                                                                     \
@@ -199,6 +210,10 @@ void ProcessInit() {
   INIT_SYSTEMLIB_CLASS_FIELD(stdclass);
   INIT_SYSTEMLIB_CLASS_FIELD(Exception);
   INIT_SYSTEMLIB_CLASS_FIELD(BadMethodCallException);
+  INIT_SYSTEMLIB_CLASS_FIELD(InvalidArgumentException);
+  INIT_SYSTEMLIB_CLASS_FIELD(RuntimeException);
+  INIT_SYSTEMLIB_CLASS_FIELD(OutOfBoundsException);
+  INIT_SYSTEMLIB_CLASS_FIELD(InvalidOperationException);
   INIT_SYSTEMLIB_CLASS_FIELD(Directory);
   INIT_SYSTEMLIB_CLASS_FIELD(RecursiveDirectoryIterator);
   INIT_SYSTEMLIB_CLASS_FIELD(SplFileInfo);
@@ -220,8 +235,7 @@ void ProcessInit() {
   SystemLib::s_nativeClassUnit = nativeClassUnit;
 
   // Load the nativelib unit to build the Class objects
-  UNUSED bool success = g_vmContext->mergeUnit(SystemLib::s_nativeClassUnit);
-  ASSERT(success);
+  SystemLib::s_nativeClassUnit->merge();
 
   // Retrieve all of the class pointers
   for (long long i = 0LL; i < hhbc_ext_class_count; ++i) {

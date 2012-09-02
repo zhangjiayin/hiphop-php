@@ -28,16 +28,16 @@ namespace HPHP {
 class ArrayInit;
 
 class ZendArray : public ArrayData {
+  static const uint LgMinSize = 3;
+  static const uint MinSize = 1 << LgMinSize;
 public:
   friend class ArrayInit;
   friend class VectorArray;
 
-  ZendArray() :
-    m_nTableSize(8), m_nTableMask(8 - 1),
-    m_nNextFreeElement(0),
-    m_pListHead(NULL), m_pListTail(NULL), m_arBuckets(NULL), m_flag(0) {
-      m_size = 0;
-      m_arBuckets = (Bucket **)calloc(m_nTableSize, sizeof(Bucket *));
+  ZendArray() : m_arBuckets(m_inlineBuckets), m_nTableMask(MinSize - 1),
+    m_flag(0), m_pListHead(0), m_pListTail(0), m_nNextFreeElement(0) {
+    m_size = 0;
+    memset(m_inlineBuckets, 0, MinSize * sizeof(Bucket*));
   }
 
   ZendArray(uint nSize);
@@ -64,8 +64,6 @@ public:
   virtual Variant value(ssize_t &pos) const;
   virtual Variant each();
 
-  virtual bool isHead() const { return m_pos == (ssize_t)m_pListHead; }
-  virtual bool isTail() const { return m_pos == (ssize_t)m_pListTail; }
   virtual bool isInvalid() const { return !m_pos; }
 
   virtual bool exists(int64   k) const;
@@ -73,14 +71,10 @@ public:
   virtual bool exists(CStrRef k) const;
   virtual bool exists(CVarRef k) const;
 
-  virtual bool idxExists(ssize_t idx) const;
-
   virtual CVarRef get(int64   k, bool error = false) const;
   virtual CVarRef get(litstr  k, bool error = false) const;
   virtual CVarRef get(CStrRef k, bool error = false) const;
   virtual CVarRef get(CVarRef k, bool error = false) const;
-
-  virtual void load(CVarRef k, Variant &v) const;
 
   virtual ssize_t getIndex(int64 k) const;
   virtual ssize_t getIndex(litstr k) const;
@@ -121,6 +115,7 @@ public:
   virtual ArrayData *remove(CVarRef k, bool copy);
 
   virtual ArrayData *copy() const;
+  virtual ArrayData *copyWithStrongIterators() const;
   virtual ArrayData *nonSmartCopy() const;
   virtual ArrayData *append(CVarRef v, bool copy);
   virtual ArrayData *appendRef(CVarRef v, bool copy);
@@ -140,39 +135,81 @@ public:
   class Bucket {
   public:
     Bucket() :
-      h(0), key(NULL), pListNext(NULL), pListLast(NULL), pNext(NULL) { }
+      ikey(0), pListNext(NULL), pListLast(NULL), pNext(NULL) {
+      data._count = 0;
+    }
 
     Bucket(Variant::NoInit d) :
-      h(0), key(NULL), data(d), pListNext(NULL), pListLast(NULL), pNext(NULL) { }
+      ikey(0), data(d), pListNext(NULL), pListLast(NULL), pNext(NULL) {
+      data._count = 0;
+    }
 
     Bucket(CVarRef d) :
-      h(0), key(NULL), data(d), pListNext(NULL), pListLast(NULL), pNext(NULL)
-      { }
+      ikey(0), data(d), pListNext(NULL), pListLast(NULL), pNext(NULL) {
+      data._count = 0;
+    }
 
     Bucket(CVarStrongBind d) :
-      h(0), key(NULL), data(d), pListNext(NULL), pListLast(NULL), pNext(NULL)
-      { }
+      ikey(0), data(d), pListNext(NULL), pListLast(NULL), pNext(NULL) {
+      data._count = 0;
+    }
 
     Bucket(CVarWithRefBind d) :
-      h(0), key(NULL), data(d), pListNext(NULL), pListLast(NULL), pNext(NULL)
-      { }
+      ikey(0), data(d), pListNext(NULL), pListLast(NULL), pNext(NULL) {
+      data._count = 0;
+    }
+
+    // set the top bit for string hashes to make sure the hash
+    // value is never zero. hash value 0 corresponds to integer key.
+    static inline int32_t encodeHash(strhash_t h) {
+      return int32_t(h) | 0x80000000;
+    }
 
     // These special constructors do not setup all the member fields.
     // They cannot be used along but must be with the following special
     // ZendArray constructor
     Bucket(StringData *k, CVarRef d) :
-      key(k), data(d) {
+      skey(k), data(d) {
       ASSERT(k->isStatic());
-      h = k->getPrecomputedHash();
+      data._count = encodeHash(k->getPrecomputedHash());
     }
-    Bucket(int64 k, CVarRef d) : h(k), key(NULL), data(d) { }
-    Bucket(int64 k, CVarWithRefBind d) : h(k), key(NULL), data(d) { }
+    Bucket(int64 k, CVarRef d) : ikey(k), data(d) {
+      data._count = 0;
+    }
+    Bucket(int64 k, CVarWithRefBind d) : ikey(k), data(d) {
+      data._count = 0;
+    }
 
     ~Bucket();
 
-    int64       h;
-    StringData *key;
+    /* The key is either a string pointer or an int value, and the _count
+     * field in data is used to discriminate the key type. _count = 0 means
+     * int, nonzero values contain 31 bits of a string's hashcode.
+     * It is critical that when we return &data to clients, that they not
+     * read or write the _count field! */
+    union {
+      int64      ikey;
+      StringData *skey;
+    };
     Variant     data;
+    inline bool hasStrKey() const { return data._count != 0; }
+    inline bool hasIntKey() const { return data._count == 0; }
+    inline void setStrKey(StringData* k, strhash_t h) {
+      skey = k;
+      skey->incRefCount();
+      data._count = encodeHash(h);
+    }
+    inline void setIntKey(int64 k) {
+      ikey = k;
+      data._count = 0;
+    }
+    inline int64 hashKey() const {
+      return data._count == 0 ? ikey : data._count;
+    }
+    inline int32_t hash() const {
+      return data._count;
+    }
+
     Bucket     *pListNext;
     Bucket     *pListLast;
     Bucket     *pNext;
@@ -194,28 +231,30 @@ private:
     StrongIteratorPastEnd = 1,
   };
 
-  uint             m_nTableSize;
-  uint             m_nTableMask;
-  int64            m_nNextFreeElement;
-  Bucket         * m_pListHead;
-  Bucket         * m_pListTail;
   Bucket         **m_arBuckets;
+  uint             m_nTableMask;
   mutable uint16   m_flag;
+  Bucket         * m_pListHead;
+  Bucket          *m_inlineBuckets[MinSize];
+  Bucket         * m_pListTail;
+  int64            m_nNextFreeElement;
+
+  uint tableSize() const { return m_nTableMask + 1; }
 
   Bucket *find(int64 h) const;
-  Bucket *find(const char *k, int len, int64 prehash) const;
+  Bucket *find(const char *k, int len, strhash_t prehash) const;
   Bucket *findForInsert(int64 h) const;
-  Bucket *findForInsert(const char *k, int len, int64 prehash) const;
+  Bucket *findForInsert(const char *k, int len, strhash_t prehash) const;
 
   Bucket ** findForErase(int64 h) const;
-  Bucket ** findForErase(const char *k, int len, int64 prehash) const;
+  Bucket ** findForErase(const char *k, int len, strhash_t prehash) const;
   Bucket ** findForErase(Bucket * bucketPtr) const;
 
   bool nextInsert(CVarRef data);
   bool nextInsertWithRef(CVarRef data);
   bool nextInsertRef(CVarRef data);
   bool addLvalImpl(int64 h, Variant **pDest, bool doFind = true);
-  bool addLvalImpl(StringData *key, int64 h, Variant **pDest,
+  bool addLvalImpl(StringData *key, strhash_t h, Variant **pDest,
                    bool doFind = true);
   bool addValWithRef(int64 h, CVarRef data);
   bool addValWithRef(StringData *key, CVarRef data);
@@ -229,6 +268,7 @@ private:
   ZendArray *copyImpl() const;
   ZendArray *copyImplHelper(bool sma) const;
 
+  void init(uint nSize);
   void resize();
   void rehash();
 

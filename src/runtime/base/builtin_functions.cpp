@@ -30,6 +30,7 @@
 #include <runtime/ext/ext_class.h>
 #include <runtime/ext/ext_function.h>
 #include <runtime/ext/ext_file.h>
+#include <runtime/ext/ext_collection.h>
 #include <runtime/base/array/vector_array.h>
 #include <util/logger.h>
 #include <util/util.h>
@@ -652,7 +653,6 @@ Variant f_call_user_func_array(CVarRef function, CArrRef params,
       return null;
     }
 
-    if (has_eval_support) eval_set_callee_alias(methodname);
     if (doBind && !bound) {
       FrameInjection::StaticClassNameHelper scn(
         ThreadInfo::s_threadInfo.getNoCheck(), classname);
@@ -687,8 +687,6 @@ Variant call_user_func_few_args(CVarRef function, int count, ...) {
                                       classname, methodname, doBind))) {
     return null;
   }
-
-  if (has_eval_support) eval_set_callee_alias(methodname);
 
   if (doBind) {
     FrameInjection::StaticClassNameHelper scn(
@@ -729,7 +727,7 @@ Variant invoke_func_few_handler(void *extra, CArrRef params,
   return few_args(extra, s, INVOKE_FEW_ARGS_PASS_ARR_ARGS);
 }
 
-Variant invoke(CStrRef function, CArrRef params, int64 hash /* = -1 */,
+Variant invoke(CStrRef function, CArrRef params, strhash_t hash /* = -1 */,
                bool tryInterp /* = true */, bool fatal /* = true */) {
   StringData *sd = function.get();
   ASSERT(sd && sd->data());
@@ -737,7 +735,7 @@ Variant invoke(CStrRef function, CArrRef params, int64 hash /* = -1 */,
                 tryInterp, fatal);
 }
 
-Variant invoke(const char *function, CArrRef params, int64 hash /* = -1*/,
+Variant invoke(const char *function, CArrRef params, strhash_t hash /* = -1*/,
                bool tryInterp /* = true */, bool fatal /* = true */) {
   const CallInfo *ci;
   void *extra;
@@ -764,7 +762,8 @@ Variant invoke(CVarRef function, CArrRef params,
   return invoke_failed(function, params, fatal);
 }
 
-Variant invoke_builtin(const char *s, CArrRef params, int64 hash, bool fatal) {
+Variant invoke_builtin(const char *s, CArrRef params, strhash_t hash,
+                       bool fatal) {
   const CallInfo *ci;
   void *extra;
   if (LIKELY(get_call_info_builtin(ci, extra, s, hash))) {
@@ -938,6 +937,18 @@ void throw_instance_method_fatal(const char *name) {
   if (!strstr(name, "::__destruct")) {
     raise_error("Non-static method %s() cannot be called statically", name);
   }
+}
+
+void NEVER_INLINE throw_collection_modified() {
+  Object e(SystemLib::AllocInvalidOperationExceptionObject(
+    "Collection was modified during iteration"));
+  throw e;
+}
+
+void NEVER_INLINE throw_iterator_not_valid() {
+  Object e(SystemLib::AllocInvalidOperationExceptionObject(
+    "Iterator is not valid"));
+  throw e;
 }
 
 Object create_object(CStrRef s, CArrRef params, bool init /* = true */,
@@ -1332,42 +1343,34 @@ Variant unserialize_ex(CStrRef str, VariableUnserializer::Type type) {
 
 String concat3(CStrRef s1, CStrRef s2, CStrRef s3) {
   TAINT_OBSERVER(TAINT_BIT_NONE, TAINT_BIT_NONE);
-
-  int len1 = s1.size();
-  int len2 = s2.size();
-  int len3 = s3.size();
-  int len = len1 + len2 + len3;
-  char *buf = (char *)malloc(len + 1);
-  if (buf == NULL) {
-    throw FatalErrorException(0, "malloc failed: %d", len);
-  }
-  memcpy(buf, s1.data(), len1);
-  memcpy(buf + len1, s2.data(), len2);
-  memcpy(buf + len1 + len2, s3.data(), len3);
-  buf[len] = 0;
-
-  return String(buf, len, AttachString);
+  StringSlice r1 = s1.slice();
+  StringSlice r2 = s2.slice();
+  StringSlice r3 = s3.slice();
+  int len = r1.len + r2.len + r3.len;
+  StringData* str = NEW(StringData)(len);
+  MutableSlice r = str->mutableSlice();
+  memcpy(r.ptr,                   r1.ptr, r1.len);
+  memcpy(r.ptr + r1.len,          r2.ptr, r2.len);
+  memcpy(r.ptr + r1.len + r2.len, r3.ptr, r3.len);
+  str->setSize(len);
+  return str;
 }
 
 String concat4(CStrRef s1, CStrRef s2, CStrRef s3, CStrRef s4) {
   TAINT_OBSERVER(TAINT_BIT_NONE, TAINT_BIT_NONE);
-
-  int len1 = s1.size();
-  int len2 = s2.size();
-  int len3 = s3.size();
-  int len4 = s4.size();
-  int len = len1 + len2 + len3 + len4;
-  char *buf = (char *)malloc(len + 1);
-  if (buf == NULL) {
-    throw FatalErrorException(0, "malloc failed: %d", len);
-  }
-  memcpy(buf, s1.data(), len1);
-  memcpy(buf + len1, s2.data(), len2);
-  memcpy(buf + len1 + len2, s3.data(), len3);
-  memcpy(buf + len1 + len2 + len3, s4.data(), len4);
-  buf[len] = 0;
-
-  return String(buf, len, AttachString);
+  StringSlice r1 = s1.slice();
+  StringSlice r2 = s2.slice();
+  StringSlice r3 = s3.slice();
+  StringSlice r4 = s4.slice();
+  int len = r1.len + r2.len + r3.len + r4.len;
+  StringData* str = NEW(StringData)(len);
+  MutableSlice r = str->mutableSlice();
+  memcpy(r.ptr,                            r1.ptr, r1.len);
+  memcpy(r.ptr + r1.len,                   r2.ptr, r2.len);
+  memcpy(r.ptr + r1.len + r2.len,          r3.ptr, r3.len);
+  memcpy(r.ptr + r1.len + r2.len + r3.len, r4.ptr, r4.len);
+  str->setSize(len);
+  return str;
 }
 
 String concat5(CStrRef s1, CStrRef s2, CStrRef s3, CStrRef s4, CStrRef s5) {
@@ -1460,11 +1463,16 @@ bool empty(CVarRef v, CVarRef offset) {
     return empty(Variant::GetAsArray(tva).rvalAtRef(offset));
   }
   if (Variant::GetAccessorType(tva) == KindOfObject) {
-    if (!Variant::GetArrayAccess(tva)->
-        o_invoke(s_offsetExists, Array::Create(offset))) {
-      return true;
+    ObjectData* obj = Variant::GetObjectData(tva);
+    if (obj->isCollection()) {
+      return collectionOffsetEmpty(obj, offset);
+    } else {
+      if (!Variant::GetArrayAccess(tva)->
+          o_invoke(s_offsetExists, Array::Create(offset))) {
+        return true;
+      }
+      return empty(v.rvalAt(offset));
     }
-    // fall through to check for 'empty'ness of the value.
   } else if (Variant::IsString(tva)) {
     uint64 pos = offset.toInt64();
     if (pos >= (uint64)Variant::GetStringData(tva)->size()) {
@@ -1503,8 +1511,13 @@ bool isset(CVarRef v, int64   offset) {
     return isset(Variant::GetArrayData(tva)->get(offset));
   }
   if (Variant::GetAccessorType(tva) == KindOfObject) {
-    return Variant::GetArrayAccess(tva)->
-      o_invoke(s_offsetExists, Array::Create(offset), -1);
+    ObjectData* obj = Variant::GetObjectData(tva);
+    if (obj->isCollection()) {
+      return collectionOffsetIsset(obj, offset);
+    } else {
+      return Variant::GetArrayAccess(tva)->
+        o_invoke(s_offsetExists, Array::Create(offset), -1);
+    }
   }
   if (Variant::IsString(tva)) {
     return (uint64)offset < (uint64)Variant::GetStringData(tva)->size();
@@ -1527,8 +1540,13 @@ bool isset(CVarRef v, CVarRef offset) {
     return isset(Variant::GetAsArray(tva).rvalAtRef(offset));
   }
   if (Variant::GetAccessorType(tva) == KindOfObject) {
-    return Variant::GetArrayAccess(tva)->
-      o_invoke(s_offsetExists, Array::Create(offset), -1);
+    ObjectData* obj = Variant::GetObjectData(tva);
+    if (obj->isCollection()) {
+      return collectionOffsetEmpty(obj, offset);
+    } else {
+      return Variant::GetArrayAccess(tva)->
+        o_invoke(s_offsetExists, Array::Create(offset), -1);
+    }
   }
   if (Variant::IsString(tva)) {
     uint64 pos = offset.toInt64();
@@ -1930,7 +1948,7 @@ MethodCallPackage::MethodCallPackage()
 
 HOT_FUNC_HPHP
 bool MethodCallPackage::methodCall(ObjectData *self, CStrRef method,
-                                   int64 prehash /* = -1 */) {
+                                   strhash_t prehash /* = -1 */) {
   isObj = true;
   rootObj = self;
   name = &method;
@@ -1939,7 +1957,7 @@ bool MethodCallPackage::methodCall(ObjectData *self, CStrRef method,
 
 HOT_FUNC_HPHP
 bool MethodCallPackage::methodCall(CVarRef self, CStrRef method,
-                                   int64 prehash /* = -1 */) {
+                                   strhash_t prehash /* = -1 */) {
   isObj = true;
   ObjectData *s = self.objectForCall();
   rootObj = s;
@@ -1948,7 +1966,7 @@ bool MethodCallPackage::methodCall(CVarRef self, CStrRef method,
 }
 
 bool MethodCallPackage::dynamicNamedCall(CVarRef self, CStrRef method,
-                                         int64 prehash /* = -1 */) {
+                                         strhash_t prehash /* = -1 */) {
   const_assert(!hhvm);
   name = &method;
   if (self.is(KindOfObject)) {
@@ -1970,7 +1988,7 @@ bool MethodCallPackage::dynamicNamedCall(CVarRef self, CStrRef method,
 }
 
 bool MethodCallPackage::dynamicNamedCall(CStrRef self, CStrRef method,
-                                         int64 prehash /* = -1 */) {
+                                         strhash_t prehash /* = -1 */) {
   const_assert(!hhvm);
   rootCls = self.get();
   name = &method;

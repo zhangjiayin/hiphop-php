@@ -27,13 +27,17 @@
 #include <sys/sem.h>
 #include <sys/shm.h>
 
-#if defined(__APPLE__) || defined(__FREEBSD__)
-#include <sys/msgbuf.h>
-#define MSGBUF_MTYPE(b) (b)->msg_magic
-#define MSGBUF_MTEXT(b) (b)->msg_bufc
+#if defined(__APPLE__) || defined(__FreeBSD__)
+# include <sys/msgbuf.h>
+# define MSGBUF_MTYPE(b) (b)->msg_magic
+# ifdef __APPLE__
+#  define MSGBUF_MTEXT(b) (b)->msg_bufc
+# else
+#  define MSGBUF_MTEXT(b) (b)->msg_ptr
+# endif
 #else
-#define MSGBUF_MTYPE(b) (b)->mtype
-#define MSGBUF_MTEXT(b) (b)->mtext
+# define MSGBUF_MTYPE(b) (b)->mtype
+# define MSGBUF_MTEXT(b) (b)->mtext
 #endif
 
 using HPHP::Util::ScopedMem;
@@ -208,7 +212,7 @@ bool f_msg_receive(CObjRef queue, int64 desiredmsgtype, VRefParam msgtype,
 
   int64 realflags = 0;
   if (flags != 0) {
-#if !defined(__APPLE__) && !defined(__FREEBSD__)
+#if !defined(__APPLE__) && !defined(__FreeBSD__)
     if (flags & k_MSG_EXCEPT) realflags |= MSG_EXCEPT;
 #endif
     if (flags & k_MSG_NOERROR) realflags |= MSG_NOERROR;
@@ -643,7 +647,7 @@ bool f_shm_detach(int64 shm_identifier) {
     return false;
   }
   g_shms.erase(iter);
-  delete *iter;
+  delete (sysvshm_shm*)shm_identifier;
   return true;
 }
 

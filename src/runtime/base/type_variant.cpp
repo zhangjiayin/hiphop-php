@@ -19,6 +19,7 @@
 #include <runtime/base/variable_serializer.h>
 #include <runtime/base/variable_unserializer.h>
 #include <runtime/base/externals.h>
+#include <runtime/base/strings.h>
 #include <runtime/ext/ext_variable.h>
 #include <runtime/base/runtime_option.h>
 #include <runtime/base/zend/zend_string.h>
@@ -27,6 +28,7 @@
 #include <runtime/vm/translator/translator-x64.h>
 #include <runtime/vm/runtime.h>
 #include <system/lib/systemlib.h>
+#include <runtime/ext/ext_collection.h>
 
 #include <util/logger.h>
 
@@ -154,7 +156,7 @@ Variant::Variant(ObjectData *v) : _count(0), m_type(KindOfObject) {
   }
 }
 
-Variant::Variant(Variant *v) : _count(0), m_type(KindOfVariant) {
+Variant::Variant(Variant *v) : _count(0), m_type(KindOfRef) {
   if (v) {
     m_data.pvar = v;
   } else {
@@ -177,10 +179,6 @@ Variant::Variant(CVarWithRefBind v) {
   constructWithRefHelper(variant(v), 0);
 }
 
-void Variant::reset() {
-  m_type = KindOfNull;
-}
-
 HOT_FUNC
 static void destructString(void *p)  { ((StringData *)p)->release(); }
 HOT_FUNC
@@ -188,10 +186,10 @@ static void destructArray(void *p)   { ((ArrayData *)p)->release();  }
 HOT_FUNC
 static void destructObject(void *p)  { ((ObjectData *)p)->release(); }
 HOT_FUNC
-static void destructVariant(void *p) { ((Variant *)p)->release();    }
+static void destructRef(void *p)     { ((RefData *)p)->release();    }
 
 static void (*destructors[4])(void *) =
-  {destructString, destructArray, destructObject, destructVariant};
+  {destructString, destructArray, destructObject, destructRef};
 
 inline ALWAYS_INLINE void Variant::destructImpl() {
   ASSERT(!isPrimitive());
@@ -203,9 +201,9 @@ inline ALWAYS_INLINE void Variant::destructImpl() {
    */
   CT_ASSERT(KindOfString + 1 == KindOfArray &&
             KindOfArray + 1 == KindOfObject &&
-            KindOfObject + 1 == KindOfVariant);
+            KindOfObject + 1 == KindOfRef);
   if (m_data.pvar->decRefCount() == 0) {
-    ASSERT(m_type >= KindOfString && m_type <= KindOfVariant);
+    ASSERT(m_type >= KindOfString && m_type <= KindOfRef);
     destructors[m_type - KindOfString]((void *)m_data.pvar);
   }
 }
@@ -216,15 +214,15 @@ HOT_FUNC_VM
 void
 tv_release_generic(TypedValue* tv) {
   ASSERT(VM::Transl::tx64->stateIsDirty());
-  ASSERT(tv->m_type >= KindOfString && tv->m_type <= KindOfVariant);
-  destructors[tv->m_type - KindOfString](tv->m_data.pvar);
+  ASSERT(tv->m_type >= KindOfString && tv->m_type <= KindOfRef);
+  destructors[tv->m_type - KindOfString](tv->m_data.ptv);
 }
 
 HOT_FUNC_VM
 void
 tv_release_typed(void* pv, DataType dt) {
   ASSERT(VM::Transl::tx64->stateIsDirty());
-  ASSERT(dt >= KindOfString && dt <= KindOfVariant);
+  ASSERT(dt >= KindOfString && dt <= KindOfRef);
   destructors[dt - KindOfString](pv);
 }
 
@@ -232,10 +230,10 @@ tv_release_typed(void* pv, DataType dt) {
 
 HOT_FUNC_VM
 void tvDecRefHelper(DataType type, uint64_t datum) {
-  ASSERT(type >= KindOfString && type <= KindOfVariant);
+  ASSERT(type >= KindOfString && type <= KindOfRef);
   CT_ASSERT(KindOfString + 1 == KindOfArray &&
             KindOfArray + 1 == KindOfObject &&
-            KindOfObject + 1 == KindOfVariant);
+            KindOfObject + 1 == KindOfRef);
   if (((Variant*)datum)->decRefCount() == 0) {
     destructors[type - KindOfString]((void *)datum);
   }
@@ -272,7 +270,7 @@ Variant &Variant::setWithRef(CVarRef v, const ArrayData *arr /* = NULL */) {
 void Variant::setNull() {
   if (isPrimitive()) {
     m_type = KindOfNull;
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     m_data.pvar->setNull();
   } else {
     destruct();
@@ -284,7 +282,7 @@ HOT_FUNC
 CVarRef Variant::set(bool v) {
   if (isPrimitive()) {
     // do nothing
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     m_data.pvar->set(v);
     return *this;
   } else {
@@ -298,7 +296,7 @@ CVarRef Variant::set(bool v) {
 CVarRef Variant::set(int v) {
   if (isPrimitive()) {
     // do nothing
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     m_data.pvar->set(v);
     return *this;
   } else {
@@ -313,7 +311,7 @@ HOT_FUNC
 CVarRef Variant::set(int64 v) {
   if (isPrimitive()) {
     // do nothing
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     m_data.pvar->set(v);
     return *this;
   } else {
@@ -327,7 +325,7 @@ CVarRef Variant::set(int64 v) {
 CVarRef Variant::set(double v) {
   if (isPrimitive()) {
     // do nothing
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     m_data.pvar->set(v);
     return *this;
   } else {
@@ -341,7 +339,7 @@ CVarRef Variant::set(double v) {
 CVarRef Variant::set(litstr v) {
   if (isPrimitive()) {
     // do nothing
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     m_data.pvar->set(v);
     return *this;
   } else {
@@ -355,7 +353,7 @@ CVarRef Variant::set(litstr v) {
 
 HOT_FUNC
 CVarRef Variant::set(StringData *v) {
-  Variant *self = m_type == KindOfVariant ? m_data.pvar : this;
+  Variant *self = m_type == KindOfRef ? m_data.pvar : this;
   if (UNLIKELY(!v)) {
     self->setNull();
   } else {
@@ -370,7 +368,7 @@ CVarRef Variant::set(StringData *v) {
 CVarRef Variant::set(const StaticString & v) {
   if (isPrimitive()) {
     // do nothing
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     m_data.pvar->set(v);
     return *this;
   } else {
@@ -385,7 +383,7 @@ CVarRef Variant::set(const StaticString & v) {
 
 HOT_FUNC
 CVarRef Variant::set(ArrayData *v) {
-  Variant *self = m_type == KindOfVariant ? m_data.pvar : this;
+  Variant *self = m_type == KindOfRef ? m_data.pvar : this;
   if (UNLIKELY(!v)) {
     self->setNull();
   } else {
@@ -399,7 +397,7 @@ CVarRef Variant::set(ArrayData *v) {
 
 HOT_FUNC
 CVarRef Variant::set(ObjectData *v) {
-  Variant *self = m_type == KindOfVariant ? m_data.pvar : this;
+  Variant *self = m_type == KindOfRef ? m_data.pvar : this;
   if (UNLIKELY(!v)) {
     self->setNull();
   } else {
@@ -423,14 +421,12 @@ void Variant::init(ObjectData *v) {
 
 void Variant::split() {
   switch (m_type) {
-  case KindOfVariant: m_data.pvar->split();     break;
+  case KindOfRef: m_data.pvar->split();     break;
   // copy-on-write
   case KindOfStaticString:
   case KindOfString:
   {
-    int len = m_data.pstr->size();
-    const char *copy = string_duplicate(m_data.pstr->data(), len);
-    set(NEW(StringData)(copy, len, AttachString));
+    set(NEW(StringData)(m_data.pstr, CopyString));
     break;
   }
   case KindOfArray:   set(m_data.parr->copy()); break;
@@ -459,7 +455,7 @@ int64 Variant::hashForIntSwitch(int64 firstNonZero, int64 noMatch) const {
     return noMatch;
   case KindOfObject:
     return m_data.pobj->o_toInt64();
-  case KindOfVariant:
+  case KindOfRef:
     return m_data.pvar->hashForIntSwitch(firstNonZero, noMatch);
   default:
     break;
@@ -511,7 +507,7 @@ int64 Variant::hashForStringSwitch(
   case KindOfObject:
     needsOrder = true;
     return firstHash;
-  case KindOfVariant:
+  case KindOfRef:
     return m_data.pvar->hashForStringSwitch(
         firstTrueCaseHash, firstNullCaseHash, firstFalseCaseHash,
         firstZeroCaseHash, firstHash, noMatchHash, needsOrder);
@@ -527,7 +523,7 @@ int Variant::getRefCount() const {
   case KindOfString:  return m_data.pstr->getCount();
   case KindOfArray:   return m_data.parr->getCount();
   case KindOfObject:  return m_data.pobj->getCount();
-  case KindOfVariant: return m_data.pvar->getRefCount();
+  case KindOfRef: return m_data.pvar->getRefCount();
   default:
     break;
   }
@@ -541,7 +537,7 @@ bool Variant::isInteger() const {
   switch (m_type) {
     case KindOfInt64:
       return true;
-    case KindOfVariant:
+    case KindOfRef:
       return m_data.pvar->isInteger();
     default:
       break;
@@ -572,7 +568,7 @@ DataType Variant::toNumeric(int64 &ival, double &dval,
       return m_data.pstr->toNumeric(ival, dval);
     }
     break;
-  case KindOfVariant:
+  case KindOfRef:
     return m_data.pvar->toNumeric(ival, dval, checkString);
   default:
     break;
@@ -607,7 +603,7 @@ bool Variant::instanceof(CStrRef s) const {
     ASSERT(m_data.pobj);
     return m_data.pobj->o_instanceof(s);
   }
-  if (m_type == KindOfVariant) {
+  if (m_type == KindOfRef) {
     return m_data.pvar->instanceof(s);
   }
   return false;
@@ -617,7 +613,7 @@ bool Variant::instanceof(CStrRef s) const {
 // array operations
 
 Variant Variant::pop() {
-  if (m_type == KindOfVariant) {
+  if (m_type == KindOfRef) {
     return m_data.pvar->pop();
   }
   if (!is(KindOfArray)) {
@@ -634,7 +630,7 @@ Variant Variant::pop() {
 }
 
 Variant Variant::dequeue() {
-  if (m_type == KindOfVariant) {
+  if (m_type == KindOfRef) {
     return m_data.pvar->dequeue();
   }
   if (!is(KindOfArray)) {
@@ -651,7 +647,7 @@ Variant Variant::dequeue() {
 }
 
 void Variant::prepend(CVarRef v) {
-  if (m_type == KindOfVariant) {
+  if (m_type == KindOfRef) {
     m_data.pvar->prepend(v);
     return;
   }
@@ -674,7 +670,7 @@ Variant Variant::array_iter_reset() {
   if (is(KindOfArray)) {
     ArrayData *arr = getArrayData();
     if (arr->getCount() > 1 && !arr->isHead()
-     && !arr->isGlobalArrayWrapper()) {
+     && !arr->noCopyOnWrite()) {
       arr = arr->copy();
       set(arr);
       ASSERT(arr == getArrayData());
@@ -689,7 +685,7 @@ Variant Variant::array_iter_prev() {
   if (is(KindOfArray)) {
     ArrayData *arr = getArrayData();
     if (arr->getCount() > 1 && !arr->isInvalid()
-     && !arr->isGlobalArrayWrapper()) {
+     && !arr->noCopyOnWrite()) {
       arr = arr->copy();
       set(arr);
       ASSERT(arr == getArrayData());
@@ -712,7 +708,7 @@ Variant Variant::array_iter_current_ref() {
   if (is(KindOfArray)) {
     escalate(true);
     ArrayData *arr = getArrayData();
-    if (arr->getCount() > 1 && !arr->isGlobalArrayWrapper()) {
+    if (arr->getCount() > 1 && !arr->noCopyOnWrite()) {
       arr = arr->copy();
       set(arr);
       ASSERT(arr == getArrayData());
@@ -727,7 +723,7 @@ Variant Variant::array_iter_next() {
   if (is(KindOfArray)) {
     ArrayData *arr = getArrayData();
     if (arr->getCount() > 1 && !arr->isInvalid()
-     && !arr->isGlobalArrayWrapper()) {
+     && !arr->noCopyOnWrite()) {
       arr = arr->copy();
       set(arr);
       ASSERT(arr == getArrayData());
@@ -742,7 +738,7 @@ Variant Variant::array_iter_end() {
   if (is(KindOfArray)) {
     ArrayData *arr = getArrayData();
     if (arr->getCount() > 1 && !arr->isTail()
-     && !arr->isGlobalArrayWrapper()) {
+     && !arr->noCopyOnWrite()) {
       arr = arr->copy();
       set(arr);
       ASSERT(arr == getArrayData());
@@ -765,7 +761,7 @@ Variant Variant::array_iter_each() {
   if (is(KindOfArray)) {
     ArrayData *arr = getArrayData();
     if (arr->getCount() > 1 && !arr->isInvalid()
-     && !arr->isGlobalArrayWrapper()) {
+     && !arr->noCopyOnWrite()) {
       arr = arr->copy();
       set(arr);
       ASSERT(arr == getArrayData());
@@ -1530,14 +1526,6 @@ MutableArrayIter Variant::begin(Variant *key, Variant &val,
   if (is(KindOfObject)) {
     return getObjectData()->begin(key, val, context);
   }
-  // we are about to modify an array that has other weak references, so
-  // we have to make a copy to preserve other instances
-  if (is(KindOfArray)) {
-    ArrayData *arr = getArrayData();
-    if (arr->getCount() > 1 && !arr->isGlobalArrayWrapper()) {
-      set(arr->copy());
-    }
-  }
   return MutableArrayIter(this, key, val);
 }
 
@@ -1562,7 +1550,7 @@ bool Variant::toBooleanHelper() const {
   case KindOfString:  return m_data.pstr->toBoolean();
   case KindOfArray:   return !m_data.parr->empty();
   case KindOfObject:  return m_data.pobj->o_toBoolean();
-  case KindOfVariant: return m_data.pvar->toBoolean();
+  case KindOfRef: return m_data.pvar->toBoolean();
   default:
     ASSERT(false);
     break;
@@ -1580,7 +1568,7 @@ int64 Variant::toInt64Helper(int base /* = 10 */) const {
   case KindOfString:  return m_data.pstr->toInt64(base);
   case KindOfArray:   return m_data.parr->empty() ? 0 : 1;
   case KindOfObject:  return m_data.pobj->o_toInt64();
-  case KindOfVariant: return m_data.pvar->toInt64(base);
+  case KindOfRef: return m_data.pvar->toInt64(base);
   default:
     ASSERT(false);
     break;
@@ -1596,7 +1584,7 @@ double Variant::toDoubleHelper() const {
   case KindOfStaticString:
   case KindOfString:  return m_data.pstr->toDouble();
   case KindOfObject:  return m_data.pobj->o_toDouble();
-  case KindOfVariant: return m_data.pvar->toDouble();
+  case KindOfRef: return m_data.pvar->toDouble();
   default:
     break;
   }
@@ -1616,7 +1604,7 @@ String Variant::toStringHelper() const {
     return m_data.pstr;
   case KindOfArray:   return s_array;
   case KindOfObject:  return m_data.pobj->t___tostring();
-  case KindOfVariant: return m_data.pvar->toString();
+  case KindOfRef: return m_data.pvar->toString();
   default:
     break;
   }
@@ -1632,7 +1620,7 @@ Array Variant::toArrayHelper() const {
   case KindOfString:  return Array::Create(m_data.pstr);
   case KindOfArray:   return m_data.parr;
   case KindOfObject:  return m_data.pobj->o_toArray();
-  case KindOfVariant: return m_data.pvar->toArray();
+  case KindOfRef: return m_data.pvar->toArray();
   default:
     break;
   }
@@ -1640,7 +1628,7 @@ Array Variant::toArrayHelper() const {
 }
 
 Object Variant::toObjectHelper() const {
-  if (m_type == KindOfVariant) return m_data.pvar->toObject();
+  if (m_type == KindOfRef) return m_data.pvar->toObject();
 
   switch (m_type) {
   case KindOfUninit:
@@ -1689,7 +1677,7 @@ VarNR Variant::toKey() const {
       return VarNR(toInt64());
     }
     break;
-  case KindOfVariant:
+  case KindOfRef:
     return m_data.pvar->toKey();
   default:
     break;
@@ -2010,7 +1998,13 @@ ObjectData *Variant::getArrayAccess() const {
 }
 
 void Variant::callOffsetUnset(CVarRef key) {
-  getArrayAccess()->o_invoke(s_offsetUnset, Array::Create(key));
+  ASSERT(getType() == KindOfObject);
+  ObjectData* obj = getObjectData();
+  if (LIKELY(obj->isCollection())) {
+    collectionOffsetUnset(obj, key);
+  } else {
+    getArrayAccess()->o_invoke(s_offsetUnset, Array::Create(key));
+  }
 }
 
 static void raise_bad_offset_notice() {
@@ -2027,10 +2021,17 @@ static void raise_bad_offset_notice() {
     case KindOfStaticString:                                            \
     case KindOfString:                                                  \
       return m_data.pstr->getChar((int)offset);                         \
-    case KindOfObject:                                                  \
-      return getArrayAccess()->o_invoke(s_offsetGet,                    \
-                                        Array::Create(offset));         \
-    case KindOfVariant:                                                 \
+    case KindOfObject: {                                                \
+      ObjectData* obj = m_data.pobj;                                    \
+      if (obj->isCollection()) {                                        \
+        return collectionOffsetGet(obj, offset);                        \
+      } else {                                                          \
+        return getArrayAccess()->o_invoke(s_offsetGet,                  \
+                                          Array::Create(offset));       \
+      }                                                                 \
+      break;                                                            \
+    }                                                                   \
+    case KindOfRef:                                                     \
       return m_data.pvar->rvalAt(offset, flags);                        \
     case KindOfUninit:                                                  \
     case KindOfNull:                                                    \
@@ -2056,9 +2057,16 @@ Variant Variant::rvalAtHelper(int64 offset, ACCESSPARAMS_IMPL) const {
   case KindOfStaticString:
   case KindOfString:
     return m_data.pstr->getChar((int)offset);
-  case KindOfObject:
-    return getArrayAccess()->o_invoke(s_offsetGet, Array::Create(offset));
-  case KindOfVariant:
+  case KindOfObject: {
+    ObjectData* obj = m_data.pobj;
+    if (LIKELY(obj->isCollection())) {
+      return collectionOffsetGet(obj, offset);
+    } else {
+      return getArrayAccess()->o_invoke(s_offsetGet, Array::Create(offset));
+    }
+    break;
+  }
+  case KindOfRef:
     return m_data.pvar->rvalAt(offset, flags);
   case KindOfUninit:
   case KindOfNull:
@@ -2090,9 +2098,17 @@ Variant Variant::rvalAt(litstr offset, ACCESSPARAMS_IMPL) const {
   case KindOfStaticString:
   case KindOfString:
     return m_data.pstr->getChar(StringData(offset).toInt32());
-  case KindOfObject:
-    return getArrayAccess()->o_invoke(s_offsetGet, Array::Create(offset));
-  case KindOfVariant:
+  case KindOfObject: {
+    ObjectData* obj = m_data.pobj;
+    if (LIKELY(obj->isCollection())) {
+      String s = offset;
+      return collectionOffsetGet(obj, s);
+    } else {
+      return getArrayAccess()->o_invoke(s_offsetGet, Array::Create(offset));
+    }
+    break;
+  }
+  case KindOfRef:
     return m_data.pvar->rvalAt(offset, flags);
   case KindOfUninit:
   case KindOfNull:
@@ -2125,9 +2141,16 @@ Variant Variant::rvalAt(CStrRef offset, ACCESSPARAMS_IMPL) const {
   case KindOfStaticString:
   case KindOfString:
     return m_data.pstr->getChar(offset.toInt32());
-  case KindOfObject:
-    return getArrayAccess()->o_invoke(s_offsetGet, Array::Create(offset));
-  case KindOfVariant:
+  case KindOfObject: {
+    ObjectData* obj = m_data.pobj;
+    if (LIKELY(obj->isCollection())) {
+      return collectionOffsetGet(obj, offset);
+    } else {
+      return getArrayAccess()->o_invoke(s_offsetGet, Array::Create(offset));
+    }
+    break;
+  }
+  case KindOfRef:
     return m_data.pvar->rvalAt(offset, flags);
   case KindOfUninit:
   case KindOfNull:
@@ -2173,7 +2196,7 @@ Variant Variant::rvalAt(CVarRef offset, ACCESSPARAMS_IMPL) const {
       }
       throw_bad_type_exception("Invalid type used as key");
       break;
-    case KindOfVariant:
+    case KindOfRef:
       return rvalAt(*(offset.m_data.pvar), flags);
     default:
       ASSERT(false);
@@ -2185,9 +2208,16 @@ Variant Variant::rvalAt(CVarRef offset, ACCESSPARAMS_IMPL) const {
   case KindOfStaticString:
   case KindOfString:
     return m_data.pstr->getChar(offset.toInt32());
-  case KindOfObject:
-    return getArrayAccess()->o_invoke(s_offsetGet, Array::Create(offset));
-  case KindOfVariant:
+  case KindOfObject: {
+    ObjectData* obj = m_data.pobj;
+    if (LIKELY(obj->isCollection())) {
+      return collectionOffsetGet(obj, offset);
+    } else {
+      return getArrayAccess()->o_invoke(s_offsetGet, Array::Create(offset));
+    }
+    break;
+  }
+  case KindOfRef:
     return m_data.pvar->rvalAt(offset, flags);
   case KindOfUninit:
   case KindOfNull:
@@ -2208,11 +2238,18 @@ CVarRef Variant::rvalRefHelper(T offset, CVarRef tmp, ACCESSPARAMS_IMPL) const {
   case KindOfString:
     const_cast<Variant&>(tmp) = m_data.pstr->getChar(HPHP::toInt32(offset));
     return tmp;
-  case KindOfObject:
-    const_cast<Variant&>(tmp) =
-      getArrayAccess()->o_invoke(s_offsetGet, Array::Create(offset));
-    return tmp;
-  case KindOfVariant:
+  case KindOfObject: {
+    ObjectData* obj = m_data.pobj;
+    if (LIKELY(obj->isCollection())) {
+      return collectionOffsetGet(obj, offset);
+    } else {
+      const_cast<Variant&>(tmp) =
+        getArrayAccess()->o_invoke(s_offsetGet, Array::Create(offset));
+      return tmp;
+    }
+    break;
+  }
+  case KindOfRef:
     return m_data.pvar->rvalRef(offset, tmp, flags);
   case KindOfUninit:
   case KindOfNull:
@@ -2305,7 +2342,7 @@ CVarRef Variant::rvalRef(CVarRef offset, CVarRef tmp, ACCESSPARAMS_IMPL) const {
       }
       throw_bad_type_exception("Invalid type used as key");
       break;
-    case KindOfVariant:
+    case KindOfRef:
       return rvalRef(*(offset.m_data.pvar), tmp, flags);
     default:
       ASSERT(false);
@@ -2321,7 +2358,7 @@ CVarRef Variant::rvalAtRefHelper(T offset, ACCESSPARAMS_IMPL) const {
   if (LIKELY(m_type == KindOfArray)) {
     return asCArrRef().rvalAtRef(offset, flags);
   }
-  if (LIKELY(m_type == KindOfVariant)) {
+  if (LIKELY(m_type == KindOfRef)) {
     return m_data.pvar->rvalAtRefHelper<T>(offset, flags);
   }
   return null_variant;
@@ -2401,7 +2438,7 @@ head:
     ASSERT(ret);
     return *ret;
   }
-  if (self->m_type == KindOfVariant) {
+  if (self->m_type == KindOfRef) {
     self = self->m_data.pvar;
     goto head;
   }
@@ -2410,6 +2447,9 @@ head:
     goto head;
   }
   if (self->m_type == KindOfObject) {
+    if (self->m_data.pobj->isCollection()) {
+      raise_error("Cannot use [] for reading");
+    }
     Variant *ret = &(self->getArrayAccess()->___offsetget_lval(key));
     if (!blackHole) {
       *tmp = *ret;
@@ -2474,7 +2514,7 @@ Variant &Variant::lvalRef(CVarRef k, Variant& tmp, ACCESSPARAMS_IMPL) {
 }
 
 Variant *Variant::lvalPtr(CStrRef key, bool forWrite, bool create) {
-  Variant *t = m_type == KindOfVariant ? m_data.pvar : this;
+  Variant *t = m_type == KindOfRef ? m_data.pvar : this;
   if (t->m_type == KindOfArray) {
     return t->asArrRef().lvalPtr(key, forWrite, create);
   }
@@ -2497,10 +2537,14 @@ Variant &Variant::lvalAt() {
     break;
   case KindOfArray:
     break;
-  case KindOfVariant:
+  case KindOfRef:
     return m_data.pvar->lvalAt();
   case KindOfObject:
     {
+      ObjectData* obj = m_data.pobj;
+      if (obj->isCollection()) {
+        raise_error("Cannot use [] for reading");
+      }
       Array params = CREATE_VECTOR1(null);
       Variant& ret = lvalBlackHole();
       ret = m_data.pobj->o_invoke(s_offsetGet, params);
@@ -2565,7 +2609,7 @@ Variant Variant::refvalAt(CVarRef key) {
 }
 
 Variant Variant::refvalAtImpl(CStrRef key, bool isString /* = false */) {
-  if (m_type == KindOfVariant) {
+  if (m_type == KindOfRef) {
     return m_data.pvar->refvalAtImpl(key, isString);
   }
   if (is(KindOfArray) || isObjectConvertable()) {
@@ -2601,7 +2645,7 @@ Variant Variant::argvalAt(bool byRef, CVarRef key) const {
 
 Variant Variant::argvalAtImpl(bool byRef, CStrRef key,
     bool isString /* = false */) {
-  if (m_type == KindOfVariant) {
+  if (m_type == KindOfRef) {
     return m_data.pvar->argvalAtImpl(byRef, key, isString);
   }
   if (byRef && (is(KindOfArray) || isObjectConvertable())) {
@@ -2615,7 +2659,7 @@ Variant Variant::o_get(CStrRef propName, bool error /* = true */,
                        CStrRef context /* = null_string */) const {
   if (m_type == KindOfObject) {
     return m_data.pobj->o_get(propName, error, context);
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     return m_data.pvar->o_get(propName, error, context);
   } else if (error) {
     raise_notice("Trying to get property of non-object");
@@ -2627,7 +2671,7 @@ HOT_FUNC_HPHP
 Variant Variant::o_getPublic(CStrRef propName, bool error /* = true */) const {
   if (m_type == KindOfObject) {
     return m_data.pobj->o_getPublic(propName, error);
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     return m_data.pvar->o_getPublic(propName, error);
   } else if (error) {
     raise_notice("Trying to get property of non-object");
@@ -2640,7 +2684,7 @@ bool Variant::o_empty(CStrRef propName,
   if (m_type == KindOfObject) {
     return m_data.pobj->o_empty(propName, context);
   }
-  if (m_type == KindOfVariant) {
+  if (m_type == KindOfRef) {
     return m_data.pvar->o_empty(propName, context);
   }
   return true;
@@ -2651,7 +2695,7 @@ bool Variant::o_isset(CStrRef propName,
   if (m_type == KindOfObject) {
     return m_data.pobj->o_isset(propName, context);
   }
-  if (m_type == KindOfVariant) {
+  if (m_type == KindOfRef) {
     return m_data.pvar->o_isset(propName, context);
   }
   return false;
@@ -2661,7 +2705,7 @@ void Variant::o_unset(CStrRef propName, CStrRef context /* = null_string */) {
   if (m_type == KindOfObject) {
     m_data.pobj->o_unset(propName, context);
   }
-  if (m_type == KindOfVariant) {
+  if (m_type == KindOfRef) {
     m_data.pvar->o_unset(propName, context);
   }
 }
@@ -2674,7 +2718,7 @@ Variant Variant::o_argval(bool byRef, CStrRef propName,
     } else {
       return m_data.pobj->o_get(propName, error, context);
     }
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     if (byRef) {
       return strongBind(m_data.pvar->o_lval(propName, context));
     } else {
@@ -2689,10 +2733,10 @@ Variant Variant::o_argval(bool byRef, CStrRef propName,
 Variant Variant::o_set(CStrRef propName, CVarRef val,
                        CStrRef context /* = null_string */) {
   if (m_type == KindOfObject) {
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     return m_data.pvar->o_set(propName, val, context);
   } else if (isObjectConvertable()) {
-    set(Object(SystemLib::AllocStdClassObject()));
+    setToDefaultObject();
   } else {
     // Raise a warning
     raise_warning("Attempt to assign property of non-object");
@@ -2704,10 +2748,10 @@ Variant Variant::o_set(CStrRef propName, CVarRef val,
 Variant Variant::o_setRef(CStrRef propName, CVarRef val,
                           CStrRef context /* = null_string */) {
   if (m_type == KindOfObject) {
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     return m_data.pvar->o_setRef(propName, val, context);
   } else if (isObjectConvertable()) {
-    set(Object(SystemLib::AllocStdClassObject()));
+    setToDefaultObject();
   } else {
     // Raise a warning
     raise_warning("Attempt to assign property of non-object");
@@ -2718,10 +2762,10 @@ Variant Variant::o_setRef(CStrRef propName, CVarRef val,
 
 Variant Variant::o_setPublic(CStrRef propName, CVarRef val) {
   if (m_type == KindOfObject) {
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     return m_data.pvar->o_setPublic(propName, val);
   } else if (isObjectConvertable()) {
-    set(Object(SystemLib::AllocStdClassObject()));
+    setToDefaultObject();
   } else {
     // Raise a warning
     raise_warning("Attempt to assign property of non-object");
@@ -2732,10 +2776,10 @@ Variant Variant::o_setPublic(CStrRef propName, CVarRef val) {
 
 Variant Variant::o_setPublicRef(CStrRef propName, CVarRef val) {
   if (m_type == KindOfObject) {
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     return m_data.pvar->o_setPublicRef(propName, val);
   } else if (isObjectConvertable()) {
-    set(Object(SystemLib::AllocStdClassObject()));
+    setToDefaultObject();
   } else {
     // Raise a warning
     raise_warning("Attempt to assign property of non-object");
@@ -2747,7 +2791,7 @@ Variant Variant::o_setPublicRef(CStrRef propName, CVarRef val) {
 Variant Variant::o_invoke(CStrRef s, CArrRef params, int64 hash /* = -1 */) {
   if (m_type == KindOfObject) {
     return m_data.pobj->o_invoke(s, params, hash);
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     return m_data.pvar->o_invoke(s, params, hash);
   } else {
     throw_call_non_object(s);
@@ -2758,7 +2802,7 @@ Variant Variant::o_root_invoke(CStrRef s, CArrRef params,
                                int64 hash /* = -1 */) {
   if (m_type == KindOfObject) {
     return m_data.pobj->o_root_invoke(s, params, hash);
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     return m_data.pvar->o_root_invoke(s, params, hash);
   } else {
     throw_call_non_object(s);
@@ -2768,7 +2812,7 @@ Variant Variant::o_root_invoke(CStrRef s, CArrRef params,
 Variant Variant::o_invoke_ex(CStrRef clsname, CStrRef s, CArrRef params) {
   if (m_type == KindOfObject) {
     return m_data.pobj->o_invoke_ex(clsname, s, params);
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     return m_data.pvar->o_invoke_ex(clsname, s, params);
   } else {
     throw_call_non_object(s);
@@ -2780,7 +2824,7 @@ Variant Variant::o_invoke_few_args(CStrRef s, int64 hash, int count,
   if (m_type == KindOfObject) {
     return m_data.pobj->o_invoke_few_args(s, hash, count,
                                           INVOKE_FEW_ARGS_PASS_ARGS);
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     return m_data.pvar->o_invoke_few_args(s, hash, count,
                                           INVOKE_FEW_ARGS_PASS_ARGS);
   } else {
@@ -2793,7 +2837,7 @@ Variant Variant::o_root_invoke_few_args(CStrRef s, int64 hash, int count,
   if (m_type == KindOfObject) {
     return m_data.pobj->o_root_invoke_few_args(s, hash, count,
                                                INVOKE_FEW_ARGS_PASS_ARGS);
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     return m_data.pvar->o_root_invoke_few_args(s, hash, count,
                                                INVOKE_FEW_ARGS_PASS_ARGS);
   } else {
@@ -2804,7 +2848,7 @@ Variant Variant::o_root_invoke_few_args(CStrRef s, int64 hash, int count,
 bool Variant::o_get_call_info(MethodCallPackage &info, int64 hash /* = -1 */) {
   if (m_type == KindOfObject) {
     return m_data.pobj->o_get_call_info(info, hash);
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     return m_data.pvar->o_get_call_info(info, hash);
   } else {
     throw_call_non_object();
@@ -2815,10 +2859,10 @@ Variant &Variant::o_lval(CStrRef propName, CVarRef tmpForGet,
                          CStrRef context /* = null_string */) {
   if (m_type == KindOfObject) {
     return m_data.pobj->o_lval(propName, tmpForGet, context);
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     return m_data.pvar->o_lval(propName, tmpForGet, context);
   } else if (isObjectConvertable()) {
-    set(Object(SystemLib::AllocStdClassObject()));
+    setToDefaultObject();
     return m_data.pobj->o_lval(propName, tmpForGet, context);
   } else {
     // Raise a warning
@@ -2831,7 +2875,7 @@ Variant &Variant::o_unsetLval(CStrRef propName, CVarRef tmpForGet,
                               CStrRef context /* = null_string */) {
   if (m_type == KindOfObject) {
     return m_data.pobj->o_lval(propName, tmpForGet, context);
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     return m_data.pvar->o_unsetLval(propName, tmpForGet, context);
   } else {
     return const_cast<Variant&>(tmpForGet);
@@ -2879,7 +2923,7 @@ check_array:                                                            \
   case KindOfNull:                                                      \
     set(ArrayData::Create(ToKey(key), null));                           \
     goto check_array;                                                   \
-  case KindOfVariant:                                                   \
+  case KindOfRef:                                                       \
     m_data.pvar->setOpEqual(op, key, v);                                \
     break;                                                              \
   case KindOfStaticString:                                              \
@@ -2893,11 +2937,18 @@ check_array:                                                            \
     break;                                                              \
   }                                                                     \
   case KindOfObject: {                                                  \
-    ObjectData *aa = getArrayAccess();                                  \
-    Variant &cv = aa->___offsetget_lval(key);                           \
-    OPEQUAL(op, cv, v);                                                 \
-    aa->o_invoke(s_offsetSet, CREATE_VECTOR2(key, cv), -1);             \
-    return cv;                                                          \
+    ObjectData* obj = m_data.pobj;                                      \
+    if (obj->isCollection()) {                                          \
+      Variant &cv = collectionOffsetGet(obj, key);                      \
+      OPEQUAL(op, cv, v);                                               \
+      return cv;                                                        \
+    } else {                                                            \
+      ObjectData *aa = getArrayAccess();                                \
+      Variant &cv = aa->___offsetget_lval(key);                         \
+      OPEQUAL(op, cv, v);                                               \
+      aa->o_invoke(s_offsetSet, CREATE_VECTOR2(key, cv), -1);           \
+      return cv;                                                        \
+    }                                                                   \
   }                                                                     \
   default:                                                              \
     throw_bad_type_exception("not array objects");                      \
@@ -2941,7 +2992,7 @@ inline ALWAYS_INLINE CVarRef Variant::SetImpl(Variant *self, T key,
       self->set(ArrayData::Create(k, v));
     }
     break;
-  case KindOfVariant:
+  case KindOfRef:
     self = self->m_data.pvar;
     goto retry;
   case KindOfStaticString:
@@ -2955,9 +3006,15 @@ inline ALWAYS_INLINE CVarRef Variant::SetImpl(Variant *self, T key,
     if (es != s) self->set(es);
     break;
   }
-  case KindOfObject:
-    self->getArrayAccess()->o_invoke_few_args(s_offsetSet, -1, 2, key, v);
+  case KindOfObject: {
+    ObjectData* obj = self->getObjectData();
+    if (obj->isCollection()) {
+      collectionOffsetSet(obj, key, v);
+    } else {
+      self->getArrayAccess()->o_invoke_few_args(s_offsetSet, -1, 2, key, v);
+    }
     break;
+  }
   default:
     throw_bad_type_exception("not array objects");
     break;
@@ -3009,13 +3066,18 @@ CVarRef Variant::append(CVarRef v) {
       }
     }
     break;
-  case KindOfVariant:
+  case KindOfRef:
     m_data.pvar->append(v);
     break;
   case KindOfObject:
     {
-      Array params = CREATE_VECTOR2(null, v);
-      m_data.pobj->o_invoke(s_offsetSet, params);
+      ObjectData* obj = m_data.pobj;
+      if (LIKELY(obj->isCollection())) {
+        collectionOffsetAppend(obj, v);
+      } else {
+        Array params = CREATE_VECTOR2(null, v);
+        obj->o_invoke(s_offsetSet, params);
+      }
       break;
     }
   case KindOfStaticString:
@@ -3067,7 +3129,7 @@ inline ALWAYS_INLINE CVarRef Variant::SetRefImpl(Variant *self, T key,
       self->set(ArrayData::CreateRef(k, v));
     }
     break;
-  case KindOfVariant:
+  case KindOfRef:
     self = self->m_data.pvar;
     goto retry;
   case KindOfStaticString:
@@ -3078,9 +3140,13 @@ inline ALWAYS_INLINE CVarRef Variant::SetRefImpl(Variant *self, T key,
     throw_bad_type_exception("binding assignment to stringoffset");
     break;
   }
-  case KindOfObject:
+  case KindOfObject: {
+    if (self->m_data.pobj->isCollection()) {
+      raise_error("An element of a collection cannot be taken by reference");
+    }
     self->getArrayAccess()->o_invoke_few_args(s_offsetSet, -1, 2, key, v);
     break;
+  }
   default:
     throw_bad_type_exception("not array objects");
     break;
@@ -3129,13 +3195,17 @@ CVarRef Variant::appendRef(CVarRef v) {
       }
     }
     break;
-  case KindOfVariant:
+  case KindOfRef:
     m_data.pvar->appendRef(v);
     break;
   case KindOfObject:
     {
-      m_data.pobj->o_invoke_few_args(s_offsetSet, -1, 2, null, v);
-      break;
+      ObjectData* obj = m_data.pobj;
+      if (LIKELY(obj->isCollection())) {
+        raise_error("Collection elements cannot be taken by reference");
+      } else {
+        obj->o_invoke_few_args(s_offsetSet, -1, 2, null, v);
+      }
     }
   case KindOfStaticString:
   case KindOfString:
@@ -3197,7 +3267,7 @@ check_array:
       set(ArrayData::Create(ToKey(key), null));
     }
     goto check_array;
-  case KindOfVariant:
+  case KindOfRef:
     return m_data.pvar->setOpEqual(op, key, v, isString);
   case KindOfStaticString:
   case KindOfString: {
@@ -3214,11 +3284,18 @@ check_array:
     break;
   }
   case KindOfObject: {
-    ObjectData *aa = getArrayAccess();
-    Variant &cv = aa->___offsetget_lval(key);
-    OPEQUAL(op, cv, v);
-    aa->o_invoke(s_offsetSet, CREATE_VECTOR2(key, cv), -1);
-    return cv;
+    ObjectData* obj = m_data.pobj;
+    if (obj->isCollection()) {
+      Variant &cv = collectionOffsetGet(obj, key);
+      OPEQUAL(op, cv, v);
+      return cv;
+    } else {
+      ObjectData *aa = getArrayAccess();
+      Variant &cv = aa->___offsetget_lval(key);
+      OPEQUAL(op, cv, v);
+      aa->o_invoke(s_offsetSet, CREATE_VECTOR2(key, cv), -1);
+      return cv;
+    }
   }
   default:
     throw_bad_type_exception("not array objects");
@@ -3256,7 +3333,7 @@ check_array:
     set(ArrayData::Create(k, null));
     goto check_array;
   }
-  case KindOfVariant:
+  case KindOfRef:
     return m_data.pvar->setOpEqual(op, key, v);
   case KindOfStaticString:
   case KindOfString: {
@@ -3271,11 +3348,18 @@ check_array:
     break;
   }
   case KindOfObject: {
-    ObjectData *aa = getArrayAccess();
-    Variant &cv = aa->___offsetget_lval(key);
-    OPEQUAL(op, cv, v);
-    aa->o_invoke(s_offsetSet, CREATE_VECTOR2(key, cv), -1);
-    return cv;
+    ObjectData* obj = m_data.pobj;
+    if (obj->isCollection()) {
+      Variant &cv = collectionOffsetGet(obj, key);
+      OPEQUAL(op, cv, v);
+      return cv;
+    } else {
+      ObjectData *aa = getArrayAccess();
+      Variant &cv = aa->___offsetget_lval(key);
+      OPEQUAL(op, cv, v);
+      aa->o_invoke(s_offsetSet, CREATE_VECTOR2(key, cv), -1);
+      return cv;
+    }
   }
   default:
     throw_bad_type_exception("not array objects");
@@ -3324,10 +3408,13 @@ check_array:
       throw_bad_type_exception("[] operator not supported for this type");
     }
     break;
-  case KindOfVariant:
+  case KindOfRef:
     m_data.pvar->appendOpEqual(op, v);
     break;
   case KindOfObject: {
+    if (m_data.pobj->isCollection()) {
+      raise_error("Cannot use [] for reading");
+    }
     ObjectData *aa = getArrayAccess();
     Variant &cv = aa->___offsetget_lval(null_variant);
     switch (op) {
@@ -3538,7 +3625,7 @@ void Variant::setEvalScalar() const {
     }
     break;
   }
-  case KindOfVariant:
+  case KindOfRef:
     not_reached();
     break;
   case KindOfObject:
@@ -3548,6 +3635,11 @@ void Variant::setEvalScalar() const {
     break;
   }
 }
+    
+void Variant::setToDefaultObject() {
+  raise_warning(Strings::CREATING_DEFAULT_OBJECT);
+  set(Object(SystemLib::AllocStdClassObject()));
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // output functions
@@ -3555,7 +3647,7 @@ void Variant::setEvalScalar() const {
 void Variant::serialize(VariableSerializer *serializer,
                         bool isArrayKey /* = false */,
                         bool skipNestCheck /* = false */) const {
-  if (m_type == KindOfVariant) {
+  if (m_type == KindOfRef) {
     // Ugly, but behavior is different for serialize
     if (serializer->getType() == VariableSerializer::Serialize ||
         serializer->getType() == VariableSerializer::APCSerialize ||
@@ -3603,19 +3695,22 @@ void Variant::serialize(VariableSerializer *serializer,
   }
 }
 
-static void setValue(void *addr, int type, VariableUnserializer *uns,
-                     Variant &value) {
+static void setValue(void *addr, DataType type,
+                     VariableUnserializer *uns, Variant &value) {
   value.unserialize(uns);
   switch (type) {
     case KindOfBoolean: *(bool*)addr = value;   break;
     case KindOfInt64:   *(int64*)addr = value;  break;
     case KindOfDouble:  *(double*)addr = value; break;
-    case KindOfString:  *(String*)addr = value.isString() ?
-      value.getStringData() : NULL; break;
-    case KindOfArray:   *(Array*)addr = value.isArray() ?
-      value.getArrayData() : NULL;  break;
-    case KindOfObject:  *(Object*)addr = value.isObject() ?
-      value.getObjectData() : NULL; break;
+    case KindOfString:
+      *(String*)addr = value.isString() ? value.getStringData() : NULL;
+      break;
+    case KindOfArray:
+      *(Array*)addr = value.isArray() ? value.getArrayData() : NULL;
+      break;
+    case KindOfObject:
+      *(Object*)addr = value.isObject() ? value.getObjectData() : NULL;
+      break;
     default:
       raise_error("Internal error in unserialize!");
   }
@@ -3627,10 +3722,10 @@ static void unserializeProp(VariableUnserializer *uns,
                             int nProp) {
   // Do a two-step look up
   int flags = ObjectData::RealPropWrite;
-  int type;
+  DataType type;
   void *addr = obj->o_realPropTyped(key, flags, context, &type);
   if (addr) {
-    if (UNLIKELY(type != KindOfVariant)) {
+    if (UNLIKELY(type != KindOfUnknown)) {
       // This is a property which got type inferred.
       if (UNLIKELY(uns->peek() == 'O')) {
         // an object can be referred to by an 'r', so we
@@ -3879,7 +3974,7 @@ void Variant::unserialize(VariableUnserializer *uns) {
 }
 
 Variant Variant::share(bool save) const {
-  if (m_type == KindOfVariant) {
+  if (m_type == KindOfRef) {
     return m_data.pvar->share(save);
   }
 
@@ -3920,7 +4015,7 @@ Variant Variant::share(bool save) const {
 }
 
 SharedVariant *Variant::getSharedVariant() const {
-  if (m_type == KindOfVariant) {
+  if (m_type == KindOfRef) {
     return m_data.pvar->getSharedVariant();
   }
   if (m_type == KindOfString) {
@@ -3943,7 +4038,7 @@ const char *Variant::getTypeString(DataType type) {
   case KindOfString:  return "KindOfString";
   case KindOfArray:   return "KindOfArray";
   case KindOfObject:  return "KindOfObject";
-  case KindOfVariant: return "KindOfVariant";
+  case KindOfRef: return "KindOfRef";
   default:
     ASSERT(false);
     break;
@@ -3959,8 +4054,8 @@ std::string Variant::getDebugDump() const {
 
 void Variant::dump() const {
   VariableSerializer vs(VariableSerializer::VarDump);
-  Variant ret(vs.serialize(*this, true));
-  printf("Variant: %s", ret.toString().data());
+  String ret(vs.serialize(*this, true));
+  printf("Variant: %s", ret.c_str());
 }
 
 VariantVectorBase::~VariantVectorBase() {
@@ -4102,10 +4197,10 @@ template<typename T, int op>
 T Variant::o_assign_op(CStrRef propName, CVarRef val,
                        CStrRef context /* = null_string */) {
   if (LIKELY(m_type == KindOfObject)) {
-  } else if (m_type == KindOfVariant) {
+  } else if (m_type == KindOfRef) {
     return (T)m_data.pvar->template o_assign_op<T,op>(propName, val, context);
   } else if (isObjectConvertable()) {
-    set(Object(SystemLib::AllocStdClassObject()));
+    setToDefaultObject();
   } else {
     // Raise a warning
     raise_warning("Attempt to assign property of non-object");
@@ -4117,13 +4212,11 @@ T Variant::o_assign_op(CStrRef propName, CVarRef val,
 template<typename T, int op>
 T Object::o_assign_op(CStrRef propName, CVarRef val,
                       CStrRef context /* = null_string */) {
-  ObjectData *obj = m_px;
-  if (UNLIKELY(!obj)) {
-    obj = SystemLib::AllocStdClassObject();
-    ObjectBase::operator=(obj);
+  if (UNLIKELY(!m_px)) {
+    setToDefaultObject();
   }
-
-  return obj->template o_assign_op<T,op>(propName, val, context);
+  ASSERT(m_px);
+  return m_px->template o_assign_op<T,op>(propName, val, context);
 }
 
 template<typename T, int op>

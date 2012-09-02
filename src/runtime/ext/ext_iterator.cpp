@@ -445,7 +445,6 @@ String f_hphp_recursivedirectoryiterator_getsubpathname(CObjRef obj) {
 
 c_MutableArrayIterator::c_MutableArrayIterator(const ObjectStaticCallbacks *cb /* = &cw_MIterCtx */)
     : ExtObjectData(cb), m_valid(false) {
-  CPP_BUILTIN_CLASS_INIT(MutableArrayIterator);
 }
 
 c_MutableArrayIterator::~c_MutableArrayIterator() {
@@ -469,36 +468,26 @@ void c_MutableArrayIterator::t___construct(VRefParam array) {
   }
   Variant var(strongBind(array));
   TypedValue* tv = (TypedValue*)(&var);
-  ASSERT(tv->m_type == KindOfVariant);
+  ASSERT(tv->m_type == KindOfRef);
   if (tv->m_data.ptv->m_type == KindOfArray) {
-    ArrayData* ad = tv->m_data.ptv->m_data.parr;
-    if (ad->getCount() > 1) {
-      ArrayData* copy = ad->copy();
-      copy->incRefCount();
-      ad->decRefCount();  // count > 1 to begin with; don't need release
-      ad = tv->m_data.ptv->m_data.parr = copy;
-    }
     MIterCtx& mi = marr();
-    (void) new (&mi) MIterCtx((const Variant*)tv->m_data.ptv);
+    (void) new (&mi) MIterCtx(tv->m_data.pref);
     m_valid = mi.m_mArray->advance();
     if (!m_valid) mi.~MIterCtx();
   } else if (tv->m_data.ptv->m_type == KindOfObject) {
     CStrRef ctxStr = hhvm
                      ? g_vmContext->getContextClassName(true)
                      : FrameInjection::GetClassName(true);
+    if (tv->m_data.ptv->m_data.pobj->isCollection()) {
+      raise_error("Collection elements cannot be taken by reference");
+    }
     bool isIterator;
     Object obj = tv->m_data.ptv->m_data.pobj->iterableObject(isIterator);
     if (isIterator) {
       raise_error("An iterator cannot be used with foreach by reference");
     }
     Array iterArray = obj->o_toIterArray(ctxStr, true);
-    ArrayData* ad = iterArray.getArrayData();
-    if (ad->getCount() > 1) {
-      ArrayData* copy = ad->copy();
-      copy->incRefCount();
-      ad->decRefCount();  // count > 1 to begin with; don't need release
-      ad = copy;
-    }
+    ArrayData* ad = iterArray.detach();
     MIterCtx& mi = marr();
     (void) new (&mi) MIterCtx(ad);
     m_valid = mi.m_mArray->advance();

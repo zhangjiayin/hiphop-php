@@ -69,8 +69,15 @@ void ObjectMethodExpression::analyzeProgram(AnalysisResultPtr ar) {
       ClassScopePtr cls = getClassScope();
       if (cls) {
         m_classScope = cls;
-        m_funcScope = func = cls->findFunction(ar, m_name, true, true);
-        if (func) {
+        func = cls->findFunction(ar, m_name, true, true);
+        if (func &&
+            !cls->isInterface() &&
+            !(func->isVirtual() &&
+              (ar->isSystem() || func->isAbstract() ||
+               (func->hasOverride() &&
+                cls->getAttribute(ClassScope::NotFinal))) &&
+              !func->isPerfectVirtual())) {
+          m_funcScope = func;
           func->addCaller(getScope());
         }
       }
@@ -299,6 +306,7 @@ void ObjectMethodExpression::outputCPPObject(CodeGenerator &cg,
     TypePtr thisImplType(m_object->getImplementedType());
     TypePtr thisActType (m_object->getActualType());
     bool close = false;
+    bool checkedThis = getFunctionScope()->isStatic();
     if (thisImplType) {
       ASSERT(thisActType);
       ASSERT(!Type::SameType(thisActType, thisImplType));
@@ -312,13 +320,18 @@ void ObjectMethodExpression::outputCPPObject(CodeGenerator &cg,
         ClassScopePtr cls(thisActType->getClass(ar, getScope()));
         ASSERT(cls && !cls->derivedByDynamic()); // since we don't do type
                                                  // assertions for these
+        if (!cls->derivesFrom(ar, thisImplType->getName(), true, false)) {
+          ASSERT(cls->derivesFromRedeclaring() &&
+                 implCls->derivedByDynamic());
+          checkedThis = true;
+        }
         cg_printf("static_cast<%s%s*>(",
                   Option::ClassPrefix,
                   cls->getId().c_str());
         close = true;
       }
     }
-    if (getFunctionScope()->isStatic()) {
+    if (checkedThis) {
       if (close) {
         cg_printf("GET_THIS_VALID()");
       } else {
@@ -339,15 +352,13 @@ void ObjectMethodExpression::outputCPPObject(CodeGenerator &cg,
   }
 }
 
+
 void ObjectMethodExpression::outputCPPObjectCall(CodeGenerator &cg,
                                                  AnalysisResultPtr ar) {
   outputCPPObject(cg, ar);
   bool isThis = m_object->isThis();
   if (!isThis) {
-    if (m_object->is(KindOfSimpleVariable) &&
-        static_pointer_cast<SimpleVariable>(m_object)->isGuarded()) {
-      cg_printf(".get()");
-    }
+    m_object->outputCPPGuardedObjectPtr(cg);
     cg_printf("->");
   }
 
@@ -418,16 +429,13 @@ bool ObjectMethodExpression::preOutputCPP(CodeGenerator &cg,
     }
   } else {
     cg_printf("obj%d", m_ciTemp);
-    if (m_object->is(KindOfSimpleVariable) &&
-        static_pointer_cast<SimpleVariable>(m_object)->isGuarded()) {
-      cg_printf(".get()");
-    }
+    m_object->outputCPPGuardedObjectPtr(cg);
   }
   cg_printf("), ");
   if (!m_name.empty()) {
-    uint64 hash = hash_string_i(m_name.c_str());
+    strhash_t hash = hash_string_i(m_name.c_str());
     cg_printString(m_origName, ar, shared_from_this());
-    cg_printf(", 0x%016llXLL);\n", hash);
+    cg_printf(", " STRHASH_FMT ");\n", hash);
   } else {
     cg_printf("mth%d, -1);\n", m_ciTemp);
   }

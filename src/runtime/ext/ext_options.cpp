@@ -26,11 +26,12 @@
 #include <runtime/base/runtime_error.h>
 #include <runtime/base/zend/zend_functions.h>
 #include <runtime/base/zend/zend_string.h>
-#include <runtime/eval/runtime/eval_state.h>
 #include <util/process.h>
 #include <sys/utsname.h>
 #include <pwd.h>
 #include <system/gen/php/globals/constants.h>
+
+#include <runtime/vm/request_arena.h>
 
 namespace HPHP {
 ///////////////////////////////////////////////////////////////////////////////
@@ -161,11 +162,11 @@ String f_set_include_path(CStrRef new_include_path) {
 }
 
 Array f_get_included_files() {
-  return Eval::RequestEvalState::GetIncludes()["included"];
+  return Array::Create();
 }
 
 Array f_inclued_get_data() {
-  return Eval::RequestEvalState::GetIncludes()["inclued"];
+  return Array::Create();
 }
 
 int64 f_get_magic_quotes_gpc() {
@@ -608,15 +609,11 @@ bool f_clock_getres(int clk_id, VRefParam sec, VRefParam nsec) {
 }
 
 bool f_clock_gettime(int clk_id, VRefParam sec, VRefParam nsec) {
-#if defined(__APPLE__)
-  throw NotSupportedException(__func__, "feature not supported on OSX");
-#else
   struct timespec ts;
-  int ret = clock_gettime(clk_id, &ts);
+  int ret = gettime(clk_id, &ts);
   sec = (int64)ts.tv_sec;
   nsec = (int64)ts.tv_nsec;
   return ret == 0;
-#endif
 }
 
 bool f_clock_settime(int clk_id, int64 sec, int64 nsec) {
@@ -658,7 +655,12 @@ int64 f_memory_get_allocation() {
   if (RuntimeOption::EnableMemoryManager) {
     MemoryManager *mm = MemoryManager::TheMemoryManager().getNoCheck();
     const MemoryUsageStats &stats = mm->getStats(true);
-    return stats.totalAlloc;
+    int64 ret = stats.totalAlloc;
+#ifdef HHVM
+    ret -= VM::request_arena().slackEstimate() +
+           VM::varenv_arena().slackEstimate();
+#endif
+    return ret;
   }
   return 0;
 }
@@ -676,7 +678,12 @@ int64 f_memory_get_usage(bool real_usage /* = false */) {
   if (RuntimeOption::EnableMemoryManager) {
     MemoryManager *mm = MemoryManager::TheMemoryManager().getNoCheck();
     const MemoryUsageStats &stats = mm->getStats(true);
-    return real_usage ? stats.usage : stats.alloc;
+    int64 ret = real_usage ? stats.usage : stats.alloc;
+#ifdef HHVM
+    ret -= VM::request_arena().slackEstimate() +
+           VM::varenv_arena().slackEstimate();
+#endif
+    return ret;
   }
   return (int64)Process::GetProcessRSS(Process::GetProcessId()) * 1024 * 1024;
 }
@@ -972,6 +979,26 @@ Variant f_version_compare(CStrRef version1, CStrRef version2,
     return compare != 0;
   }
   return null;
+}
+
+bool f_gc_enabled() {
+  return false;
+}
+
+void f_gc_enable() {
+  raise_warning("HipHop currently does not support circular reference "
+                "collection");
+}
+
+void f_gc_disable() {
+  raise_warning("HipHop currently does not support circular reference "
+                "collection");
+}
+
+int64 f_gc_collect_cycles() {
+  raise_warning("HipHop currently does not support circular reference "
+                "collection");
+  return 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

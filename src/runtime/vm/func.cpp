@@ -30,6 +30,7 @@
 #include "runtime/eval/runtime/file_repository.h"
 #include "runtime/vm/translator/translator-x64.h"
 #include "runtime/vm/blob_helper.h"
+#include "runtime/vm/func_inline.h"
 
 namespace HPHP {
 namespace VM {
@@ -43,32 +44,28 @@ const StringData* Func::s___callStatic =
 //=============================================================================
 // Func.
 
-static bool decl_incompat(bool failIsFatal, const PreClass* implementor,
+static void decl_incompat(const PreClass* implementor,
                           const Func* imeth) {
-  if (failIsFatal) {
-    const char* name = imeth->name()->data();
-    raise_error("Declaration of %s::%s() must be compatible with "
-                "that of %s::%s()", implementor->name()->data(), name,
-                imeth->cls()->preClass()->name()->data(), name);
-  }
-  return false;
+  const char* name = imeth->name()->data();
+  raise_error("Declaration of %s::%s() must be compatible with "
+              "that of %s::%s()", implementor->name()->data(), name,
+              imeth->cls()->preClass()->name()->data(), name);
 }
 
 // Check compatibility vs interface and abstract declarations
-bool Func::parametersCompat(const PreClass* preClass, const Func* imeth,
-                            bool failIsFatal) const {
+void Func::parametersCompat(const PreClass* preClass, const Func* imeth) const {
   const Func::ParamInfoVec& params = this->params();
   const Func::ParamInfoVec& iparams = imeth->params();
   // Verify that meth has at least as many parameters as imeth.
   if ((params.size() < iparams.size())) {
-    return decl_incompat(failIsFatal, preClass, imeth);
+    decl_incompat(preClass, imeth);
   }
   // Verify that the typehints for meth's parameters are compatible with
   // imeth's corresponding parameter typehints.
   unsigned firstOptional = 0;
   for (unsigned i = 0; i < iparams.size(); ++i) {
     if (!params[i].typeConstraint().compat(iparams[i].typeConstraint())) {
-      return decl_incompat(failIsFatal, preClass, imeth);
+      decl_incompat(preClass, imeth);
     }
     if (!iparams[i].hasDefaultValue()) {
       // The leftmost of imeth's contiguous trailing optional parameters
@@ -81,10 +78,9 @@ bool Func::parametersCompat(const PreClass* preClass, const Func* imeth,
   // parameters.
   for (unsigned i = firstOptional; i < params.size(); ++i) {
     if (!params[i].hasDefaultValue()) {
-      return decl_incompat(failIsFatal, preClass, imeth);
+      decl_incompat(preClass, imeth);
     }
   }
-  return true;
 }
 
 static Func::FuncId s_nextFuncId = 0;
@@ -121,8 +117,9 @@ void Func::initPrologues(int numParams) {
   int maxNumPrologues = Func::getMaxNumPrologues(numParams);
   int numPrologues =
     maxNumPrologues > kNumFixedPrologues ? maxNumPrologues
-                                          : kNumFixedPrologues;
-  for (int i=0; i < numPrologues; i++) {
+                                         : kNumFixedPrologues;
+  TRACE(2, "initPrologues func %p %d\n", this, numPrologues);
+  for (int i = 0; i < numPrologues; i++) {
     m_prologueTable[i] = fcallHelper;
   }
 }
@@ -551,17 +548,6 @@ void Func::getFuncInfo(ClassInfo::MethodInfo* mi) const {
   }
 }
 
-Func::SharedData::SharedData(PreClass* preClass,
-                             const ClassInfo::MethodInfo* info,
-                             BuiltinFunction builtinFuncPtr)
-  : m_preClass(preClass), m_id(-1), m_base(0),
-    m_numLocals(0), m_numIterators(0),
-    m_past(0), m_line1(0), m_line2(0),
-    m_info(info), m_refBitVec(NULL), m_builtinFuncPtr(builtinFuncPtr),
-    m_docComment(NULL), m_top(false), m_isClosureBody(false),
-    m_isGenerator(false), m_isGeneratorFromClosure(false) {
-}
-
 Func::SharedData::SharedData(PreClass* preClass, Id id,
                              Offset base, Offset past, int line1, int line2,
                              bool top, const StringData* docComment)
@@ -583,7 +569,7 @@ void Func::SharedData::release() {
   delete this;
 }
 
-void Func::enableIntercept(CStrRef name) {
+void Func::enableIntercept() {
   // we are protected by s_mutex in intercept.cpp
   if (!s_interceptsEnabled) {
     s_interceptsEnabled = true;
@@ -592,23 +578,11 @@ void Func::enableIntercept(CStrRef name) {
 
 Func** Func::getCachedAddr() {
   ASSERT(!isMethod());
-  if (UNLIKELY(m_cachedOffset == (unsigned)-1)) {
-    Unit::loadFunc(this);
-  }
-  return (Func**)Transl::TargetCache::handleToPtr(m_cachedOffset);
+  return getCachedFuncAddr(m_cachedOffset);
 }
 
 void Func::setCached() {
-  ASSERT(!isMethod());
-  Func** funcAddr = getCachedAddr();
-  if (UNLIKELY(*funcAddr != NULL)) {
-    if (*funcAddr == this) return;
-    if (!(*funcAddr)->isIgnoreRedefinition()) {
-      raise_error(Strings::FUNCTION_ALREADY_DEFINED, name()->data());
-    }
-  }
-  *funcAddr = this;
-  DEBUGGER_ATTACHED_ONLY(phpDefFuncHook(this));
+  setCachedFunc(this, isDebuggerAttached());
 }
 
 const Func* Func::getGeneratorBody(const StringData* name) const {
@@ -644,7 +618,7 @@ FuncEmitter::~FuncEmitter() {
 
 void FuncEmitter::init(int line1, int line2, Offset base, Attr attrs, bool top,
                        const StringData* docComment) {
-  m_line1 = line1;
+  m_line1 = line1; 
   m_line2 = line2;
   m_base = base;
   m_attrs = attrs;
@@ -809,6 +783,7 @@ Func* FuncEmitter::create(Unit& unit, PreClass* preClass /* = NULL */) const {
   f->shared()->m_numLocals = m_numLocals;
   f->shared()->m_numIterators = m_numIterators;
   f->m_maxStackCells = m_maxStackCells;
+  ASSERT(m_maxStackCells > 0 && "You probably didn't set m_maxStackCells");
   f->shared()->m_staticVars = m_staticVars;
   f->shared()->m_ehtab = m_ehtab;
   f->shared()->m_fpitab = m_fpitab;
@@ -829,6 +804,8 @@ void FuncEmitter::setBuiltinFunc(const ClassInfo::MethodInfo* info,
   m_base = base;
   m_top = true;
   m_docComment = StringData::GetStaticString(info->docComment);
+  m_line1 = 0;
+  m_line2 = 0;
   m_attrs = AttrNone;
   // TODO: Task #1137917: See if we can avoid marking most builtins with
   // "MayUseVV" and still make things work
@@ -861,7 +838,7 @@ void FuncEmitter::setBuiltinFunc(const ClassInfo::MethodInfo* info,
       m_attrs = (Attr)(m_attrs | AttrPublic);
     }
   }
-  
+
   for (unsigned i = 0; i < info->parameters.size(); ++i) {
     // For builtin only, we use a dummy ParamInfo
     FuncEmitter::ParamInfo pi;

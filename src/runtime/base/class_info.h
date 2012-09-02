@@ -271,6 +271,7 @@ public:
    *   type: 0: unknown; 1: class; 2: interface
    */
   static bool GetClassMethods(MethodVec &ret, CStrRef classname, int type = 0);
+  static bool GetClassMethods(MethodVec &ret, const ClassInfo *classInfo);
 
   /**
    * Return all properties a class has, including the ones on base classes and
@@ -527,7 +528,7 @@ public:
 };
 
 struct ClassPropTableEntry {
-  enum {
+  enum PropFlags {
     Private = 1,
     Protected = 2,
     Public = 4,
@@ -538,13 +539,13 @@ struct ClassPropTableEntry {
     FastInit = 128
   };
 
-  int64         hash;
-  int           next;
-  int           init_offset;
-  uint16        prop_offset;
-  uint8         flags;
-  uint8         type;
-  int           offset;
+  strhash_t     hash;
+  int16_t       next;
+  uint16_t      init_offset; // change to uint32 if we overflow
+  uint16_t      prop_offset;
+  uint8_t       flags; // PropFlags
+  int8_t        type;  // DataType
+  int32_t       offset;
   StaticString *keyName;
   bool isPublic() const { return flags & Public; }
   bool isPrivate() const { return flags & Private; }
@@ -554,7 +555,7 @@ struct ClassPropTableEntry {
   bool isLast() const { return flags & Last; }
   bool isFastInit() const { return flags & FastInit; }
 
-  static Variant GetVariant(int type, const void *addr) {
+  static Variant GetVariant(DataType type, const void *addr) {
     switch (type) {
       case KindOfBoolean:
         return *(bool*)addr;
@@ -575,7 +576,7 @@ struct ClassPropTableEntry {
   }
 
   Variant getVariant(const void *addr) const {
-    return GetVariant(type, addr);
+    return GetVariant(DataType(type), addr);
   }
 };
 

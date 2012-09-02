@@ -49,6 +49,18 @@ inline Variant x_fb_unserialize(CVarRef thing, VRefParam success, VRefParam errc
   return f_fb_unserialize(thing, success, errcode);
 }
 
+inline Variant x_fb_compact_serialize(CVarRef thing) {
+  FUNCTION_INJECTION_BUILTIN(fb_compact_serialize);
+  TAINT_OBSERVER(TAINT_BIT_MUTATED, TAINT_BIT_NONE);
+  return f_fb_compact_serialize(thing);
+}
+
+inline Variant x_fb_compact_unserialize(CVarRef thing, VRefParam success, VRefParam errcode = null_variant) {
+  FUNCTION_INJECTION_BUILTIN(fb_compact_unserialize);
+  TAINT_OBSERVER(TAINT_BIT_MUTATED, TAINT_BIT_NONE);
+  return f_fb_compact_unserialize(thing, success, errcode);
+}
+
 inline bool x_fb_intercept(CStrRef name, CVarRef handler, CVarRef data = null_variant) {
   FUNCTION_INJECTION_BUILTIN(fb_intercept);
   TAINT_OBSERVER(, );
@@ -285,6 +297,16 @@ inline String x_fb_lazy_realpath(CStrRef filename) {
 inline void x_fb_setprofile(CVarRef callback) {
   FUNCTION_INJECTION_BUILTIN(fb_setprofile);
   f_fb_setprofile(callback);
+}
+
+inline String x_fb_gc_collect_cycles() {
+  FUNCTION_INJECTION_BUILTIN(fb_gc_collect_cycles);
+  return f_fb_gc_collect_cycles();
+}
+
+inline void x_fb_gc_detect_cycles(CStrRef filename) {
+  FUNCTION_INJECTION_BUILTIN(fb_gc_detect_cycles);
+  f_fb_gc_detect_cycles(filename);
 }
 
 

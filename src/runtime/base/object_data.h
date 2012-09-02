@@ -29,13 +29,6 @@
 namespace HPHP {
 ///////////////////////////////////////////////////////////////////////////////
 
-// Needed for eval
-namespace Eval {
-class MethodStatementWrapper;
-class FunctionCallExpression;
-class VariableEnvironment;
-}
-
 class ArrayIter;
 class MutableArrayIter;
 class ClassPropTable;
@@ -70,17 +63,23 @@ namespace VM {
 class ObjectData : public CountableNF {
  public:
   enum Attribute {
-    NoDestructor  = 0x0002, // __destruct()
-    HasSleep      = 0x0004, // __sleep()
-    UseSet        = 0x0008, // __set()
-    UseGet        = 0x0010, // __get()
-    UseIsset      = 0x0020, // __isset()
-    UseUnset      = 0x0040, // __unset()
-    HasLval       = 0x0080, // defines ___lval
-    HasCall       = 0x0100, // defines __call
-    HasCallStatic = 0x0200, // defines __callStatic
-    IsInstance    = 0x0400  // isInstance()
+    NoDestructor  = 0x0001, // __destruct()
+    HasSleep      = 0x0002, // __sleep()
+    UseSet        = 0x0004, // __set()
+    UseGet        = 0x0008, // __get()
+    UseIsset      = 0x0010, // __isset()
+    UseUnset      = 0x0020, // __unset()
+    HasLval       = 0x0040, // defines ___lval
+    HasCall       = 0x0080, // defines __call
+    HasCallStatic = 0x0100, // defines __callStatic
+    // The top 3 bits of o_attributes are reserved to indicate the
+    // type of collection
+    CollectionTypeAttrMask = (7 << 13),
+    VectorAttrInit = (Collection::VectorType << 13),
+    MapAttrInit = (Collection::MapType << 13),
+    StableMapAttrInit = (Collection::StableMapType << 13),
   };
+
   enum {
     RealPropCreate = 1,   // Property should be created if it doesnt exist
     RealPropWrite = 2,    // Property could be modified
@@ -91,9 +90,12 @@ class ObjectData : public CountableNF {
 
   ObjectData(const ObjectStaticCallbacks *cb = NULL, bool noId = false,
              VM::Class* type = NULL)
-      : o_attribute(0), o_callbacks(cb)
+      : o_attribute(0)
 #ifdef HHVM
-        , m_cls(type), m_propVec(NULL)
+        , m_propsOffset(0)
+        , m_cls(type)
+#else
+        , o_callbacks(cb)
 #endif
         {
     if (!noId) {
@@ -116,6 +118,14 @@ class ObjectData : public CountableNF {
   }
   HPHP::VM::Class* instanceof(const HPHP::VM::PreClass* pc) const;
   bool instanceof(const HPHP::VM::Class* c) const;
+
+  bool isCollection() {
+    return getCollectionType() != Collection::InvalidType;
+  }
+  int getCollectionType() {
+    // Return the upper 3 bits of o_attribute
+    return (int)(o_attribute >> 13) & 7;
+  }
 
   void setAttributes(int attrs) { o_attribute |= attrs; }
   void setAttributes(const ObjectData *o) { o_attribute |= o->o_attribute; }
@@ -195,13 +205,8 @@ class ObjectData : public CountableNF {
   virtual void getConstructor(MethodCallPackage &mcp);
   virtual void destruct();
 
-  virtual const Eval::MethodStatementWrapper* getConstructorStatementWrapper()
-    const;
-  virtual const Eval::MethodStatementWrapper* getMethodStatementWrapper(
-    CStrRef name) const;
-
   static Variant os_invoke(CStrRef c, CStrRef s,
-                           CArrRef params, int64 hash, bool fatal = true);
+                           CArrRef params, strhash_t hash, bool fatal = true);
 
   // properties
   virtual Array o_toArray() const;
@@ -210,7 +215,7 @@ class ObjectData : public CountableNF {
   Variant *o_realProp(CStrRef s, int flags,
                       CStrRef context = null_string) const;
   void *o_realPropTyped(CStrRef s, int flags,
-                        CStrRef context, int *type) const;
+                        CStrRef context, DataType* type) const;
   Variant *o_realPropPublic(CStrRef s, int flags) const;
   virtual Variant *o_realPropHook(CStrRef s, int flags,
                                   CStrRef context = null_string) const;
@@ -274,22 +279,27 @@ class ObjectData : public CountableNF {
                       CArrRef params, bool fatal = true);
 
   // method invocation with CStrRef
-  Variant o_invoke(CStrRef s, CArrRef params, int64 hash = -1,
+  Variant o_invoke(CStrRef s, CArrRef params, strhash_t hash = -1,
                    bool fatal = true);
-  Variant o_root_invoke(CStrRef s, CArrRef params, int64 hash = -1,
+  Variant o_root_invoke(CStrRef s, CArrRef params, strhash_t hash = -1,
                         bool fatal = false);
-  Variant o_invoke_few_args(CStrRef s, int64 hash, int count,
+  Variant o_invoke_few_args(CStrRef s, strhash_t hash, int count,
                             INVOKE_FEW_ARGS_DECL_ARGS);
-  Variant o_root_invoke_few_args(CStrRef s, int64 hash, int count,
+  Variant o_root_invoke_few_args(CStrRef s, strhash_t hash, int count,
                                  INVOKE_FEW_ARGS_DECL_ARGS);
-  bool o_get_call_info(MethodCallPackage &mcp, int64 hash = -1);
+  bool o_get_call_info(MethodCallPackage &mcp, strhash_t hash = -1);
   const ObjectStaticCallbacks *o_get_callbacks() const {
+#ifndef HHVM
     return o_callbacks;
+#else
+    NOT_REACHED();
+#endif
   }
   bool o_get_call_info_ex(const char *clsname,
-                          MethodCallPackage &mcp, int64 hash = -1);
+                          MethodCallPackage &mcp, strhash_t hash = -1);
   virtual bool o_get_call_info_hook(const char *clsname,
-                                    MethodCallPackage &mcp, int64 hash = -1);
+                                    MethodCallPackage &mcp,
+                                    strhash_t hash = -1);
 
   // misc
   Variant o_throw_fatal(const char *msg);
@@ -317,7 +327,7 @@ class ObjectData : public CountableNF {
   virtual Variant t___set(Variant v_name, Variant v_value);
   virtual Variant t___get(Variant v_name);
   virtual Variant *___lval(Variant v_name);
-  virtual Variant &___offsetget_lval(Variant v_name);
+  virtual Variant &___offsetget_lval(Variant key);
   virtual bool t___isset(Variant v_name);
   virtual Variant t___unset(Variant v_name);
   virtual Variant t___sleep();
@@ -354,33 +364,39 @@ public:
   template <typename T>
   inline Variant o_setPublicImpl(CStrRef propName, T v, bool forInit);
 
-  static Variant *RealPropPublicHelper(CStrRef propName, int64 hash, int flags,
-                                       const ObjectData *obj,
+  static Variant *RealPropPublicHelper(CStrRef propName, strhash_t hash,
+                                       int flags, const ObjectData *obj,
                                        const ObjectStaticCallbacks *osc);
+ public:
+  static const bool IsResourceClass = false;
  protected:
   int           o_id;            // a numeric identifier of this object
  private:
   mutable int16 o_attribute;     // various flags
- protected:
-  ArrNR         o_properties;    // dynamic properties
-#ifndef HHVM
-  // For non-HHVM builds, avoid the memory overhead of HHVM-specific fields by
-  // overlaying them onto a field that exists regardless.  This is sufficient
-  // for compilation to succeed, but it is critical that the HHVM-specific
-  // fields only be used if hhvm is true.
-  union {
-#endif
-    const ObjectStaticCallbacks *o_callbacks;
 
-    // All of the fields that would ordinarily reside in HPHP::VM::Instance must
-    // reside here, so that it is possible to dynamically compute the offset of
-    // the property vector that follows an "Instance", regardless of whether the
-    // Instance is actually an extension class that derives from ObjectData.
+  // All of the fields that would ordinarily reside in HPHP::VM::Instance must
+  // reside here, so that it is possible to dynamically compute the offset of
+  // the property vector that follows an "Instance", regardless of whether the
+  // Instance is actually an extension class that derives from ObjectData.
+
+#ifdef HHVM
+  int16         m_propsOffset;   // used for accessing declared properties
+                                 // under the VM
+#endif
+ protected:
+  ArrNR         o_properties;    // dynamic properties (VM and hphpc)
+
+#ifdef HHVM
+  HPHP::VM::Class* m_cls;
+#else
+  union {
+    const ObjectStaticCallbacks *o_callbacks;
+    // m_cls isn't used under hphpc, but we need declare it
+    // so that the compiler doesn't complain
     HPHP::VM::Class* m_cls;
-    TypedValue* m_propVec;
-#ifndef HHVM
   };
 #endif
+
  protected:
   void          cloneDynamic(ObjectData *orig);
 
@@ -390,12 +406,6 @@ public:
   }
 
  public:
-  // true : pure user class or user class deriving from builtin
-  // false: pure builtin
-  bool isInstance() const {
-    return getAttribute(IsInstance);
-  }
-
   void release() {
     ASSERT(getCount() == 0);
     destruct();
@@ -412,15 +422,15 @@ template<> inline SmartPtr<ObjectData>::~SmartPtr() {}
 typedef ObjectData c_ObjectData; // purely for easier code generation
 
 struct MethodCallInfoTable {
-  int64          hash;
-  int            flags;
-  int            len;
+  strhash_t      hash;
+  int16_t        flags; // 0 or 1
+  int16_t        len; // length of name
   const char     *name;
   const CallInfo *ci;
 };
 
 struct InstanceOfInfo {
-  int64                       hash;
+  strhash_t                   hash;
   int                         flags;
   const char                  *name;
   const ObjectStaticCallbacks *cb;
@@ -433,7 +443,8 @@ struct ObjectStaticCallbacks {
   Object create(CArrRef params, bool init = true,
                 ObjectData* root = NULL) const;
   Object createOnly(ObjectData *root = NULL) const;
-  inline bool os_get_call_info(MethodCallPackage &info, int64 hash = -1) const {
+  inline bool os_get_call_info(MethodCallPackage &info,
+                               strhash_t hash = -1) const {
     return GetCallInfo(this, info, hash);
   }
   Variant os_getInit(CStrRef s) const;
@@ -441,10 +452,10 @@ struct ObjectStaticCallbacks {
   Variant &os_lval(CStrRef s) const;
   Variant os_constant(const char *s) const;
   static bool GetCallInfo(const ObjectStaticCallbacks *osc,
-                          MethodCallPackage &mcp, int64 hash);
+                          MethodCallPackage &mcp, strhash_t hash);
   static bool GetCallInfoEx(const char *cls,
                             const ObjectStaticCallbacks *osc,
-                            MethodCallPackage &mcp, int64 hash);
+                            MethodCallPackage &mcp, strhash_t hash);
 
   bool checkAttribute(int attrs) const;
   const ObjectStaticCallbacks* operator->() const { return this; }
@@ -463,6 +474,16 @@ struct ObjectStaticCallbacks {
   const ObjectStaticCallbacks *parent;
   int                         attributes;
   HPHP::VM::Class**           os_cls_ptr;
+
+  static ObjectStaticCallbacks* encodeVMClass(const HPHP::VM::Class* vmClass) {
+    return (ObjectStaticCallbacks*)((intptr_t)vmClass | (intptr_t)1);
+  }
+  static HPHP::VM::Class* decodeVMClass(const ObjectStaticCallbacks* cb) {
+    return (HPHP::VM::Class*)((intptr_t)cb & ~(intptr_t)1);
+  }
+  static bool isEncodedVMClass(const ObjectStaticCallbacks* cb) {
+    return ((intptr_t)cb & (intptr_t)1);
+  }
 };
 
 struct RedeclaredObjectStaticCallbacks {
@@ -476,7 +497,7 @@ struct RedeclaredObjectStaticCallbacks {
   Variant os_get(CStrRef s) const;
   Variant &os_lval(CStrRef s) const;
   Variant os_constant(const char *s) const;
-  bool os_get_call_info(MethodCallPackage &info, int64 hash = -1) const;
+  bool os_get_call_info(MethodCallPackage &info, strhash_t hash = -1) const;
   ObjectData *createOnlyNoInit(ObjectData* root = NULL) const;
   Object create(CArrRef params, bool init = true,
                 ObjectData* root = NULL) const;

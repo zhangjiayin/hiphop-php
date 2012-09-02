@@ -34,7 +34,7 @@ namespace HPHP {
 /* SRC: classes/xhprof.php line 6 */
 IMPLEMENT_CLASS_NO_DEFAULT_SWEEP(XhprofFrame)
 extern const InstanceOfInfo cw_XhprofFrame$$instanceof_table[] = {
-  {0x3D290BF933ED12FDLL,1,"XhprofFrame",&cw_XhprofFrame},
+  {0x33ED12FD,1,"XhprofFrame",&cw_XhprofFrame},
 };
 const int cw_XhprofFrame$$instanceof_index[] = {
   1,
@@ -48,7 +48,7 @@ Variant c_XhprofFrame::i___construct(MethodCallPackage &mcp, CArrRef params) {
 Variant c_XhprofFrame::i___destruct(MethodCallPackage &mcp, CArrRef params) {
   return invoke_meth_few_handler(mcp, params, &ifa___destruct);
 }
-Variant c_XhprofFrame::ifa___construct(MethodCallPackage &mcp, int count, INVOKE_FEW_ARGS_IMPL_ARGS) {
+Variant NEVER_INLINE c_XhprofFrame::ifa___construct(MethodCallPackage &mcp, int count, INVOKE_FEW_ARGS_IMPL_ARGS) {
   if (UNLIKELY(mcp.obj == 0)) {
     return ObjectData::ifa_dummy(mcp, count, INVOKE_FEW_ARGS_PASS_ARGS, ifa___construct, coo_XhprofFrame);
   }
@@ -57,7 +57,7 @@ Variant c_XhprofFrame::ifa___construct(MethodCallPackage &mcp, int count, INVOKE
   CVarRef arg0(a0);
   return (self->t___construct(arg0), null);
 }
-Variant c_XhprofFrame::ifa___destruct(MethodCallPackage &mcp, int count, INVOKE_FEW_ARGS_IMPL_ARGS) {
+Variant NEVER_INLINE c_XhprofFrame::ifa___destruct(MethodCallPackage &mcp, int count, INVOKE_FEW_ARGS_IMPL_ARGS) {
   if (UNLIKELY(mcp.obj == 0)) {
     return ObjectData::ifa_dummy(mcp, count, INVOKE_FEW_ARGS_PASS_ARGS, ifa___destruct, coo_XhprofFrame);
   }
@@ -66,8 +66,8 @@ Variant c_XhprofFrame::ifa___destruct(MethodCallPackage &mcp, int count, INVOKE_
   return (self->t___destruct());
 }
 extern const MethodCallInfoTable cw_XhprofFrame$$call_info_table[] = {
-  { 0x0D31D0AC229C615FLL, 0, 11, "__construct", &ci_XhprofFrame$$__construct },
-  { 0x7F974836AACC1EF3LL, 1, 10, "__destruct", &ci_XhprofFrame$$__destruct },
+  { 0x229C615F, 0, 11, "__construct", &ci_XhprofFrame$$__construct },
+  { 0x2ACC1EF3, 1, 10, "__destruct", &ci_XhprofFrame$$__destruct },
 };
 extern const int cw_XhprofFrame$$call_info_index[] = {
   3,
