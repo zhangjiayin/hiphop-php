@@ -17,6 +17,8 @@
 
 #include <runtime/ext/ext_xmlwriter.h>
 
+#include <system/lib/systemlib.h>
+
 namespace HPHP {
 IMPLEMENT_DEFAULT_EXTENSION(xmlwriter);
 ///////////////////////////////////////////////////////////////////////////////
@@ -800,11 +802,6 @@ Variant c_XMLWriter::t_flush(bool empty /* = true */) {
 String c_XMLWriter::t_outputmemory(bool flush /* = true */) {
   INSTANCE_METHOD_INJECTION_BUILTIN(XMLWriter, XMLWriter::outputmemory);
   return t_flush(flush);
-}
-
-Variant c_XMLWriter::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(XMLWriter, XMLWriter::__destruct);
-  return null;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

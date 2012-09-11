@@ -46,9 +46,11 @@ public:
   SystemGlobals();
   void initialize();
 
-  CallInfo* stgv_CallInfoPtr[1];
+  Array stgv_Array[1];
+  #define s_ReflectionClass$$fetched stgv_Array[0]
+  RedeclaredCallInfoConst* stgv_RedeclaredCallInfoConstPtr[1];
   RedeclaredObjectStaticCallbacksConst* stgv_RedeclaredObjectStaticCallbacksConstPtr[1];
-  Variant stgv_Variant[13];
+  Variant stgv_Variant[14];
   #define gvm_HTTP_RAW_POST_DATA stgv_Variant[0]
   #define gvm__COOKIE stgv_Variant[1]
   #define gvm__ENV stgv_Variant[2]
@@ -62,6 +64,7 @@ public:
   #define gvm_argv stgv_Variant[10]
   #define gvm_http_response_header stgv_Variant[11]
   #define k_SID stgv_Variant[12]
+  #define s_Exception$$traceOpts stgv_Variant[13]
   bool stgv_bool[1];
   #define run_pm_php$globals$symbols_php stgv_bool[0]
   double stgv_double[1];
@@ -75,7 +78,7 @@ public:
   static void initialize();
   static void initializeNamed();
 
-  static StaticArray ssa_[1];
+  static StaticArray ssa_[2];
 };
 
 extern const int64 k_CURLINFO_LOCAL_PORT;
@@ -141,13 +144,16 @@ extern const int64 k_INPUT_GET;
 extern const int64 k_INPUT_POST;
 extern const int64 k_INPUT_SERVER;
 extern const int64 k_INPUT_SESSION;
+extern const int64 k_JSON_FB_EXTRA_ESCAPES;
 extern const int64 k_JSON_FB_LOOSE;
+extern const int64 k_JSON_FB_UNLIMITED;
 extern const int64 k_JSON_FORCE_OBJECT;
 extern const int64 k_JSON_HEX_AMP;
 extern const int64 k_JSON_HEX_APOS;
 extern const int64 k_JSON_HEX_QUOT;
 extern const int64 k_JSON_HEX_TAG;
 extern const int64 k_JSON_NUMERIC_CHECK;
+extern const int64 k_JSON_PRETTY_PRINT;
 extern const int64 k_JSON_UNESCAPED_SLASHES;
 extern const double k_NAN;
 extern const int64 k_OPENSSL_RAW_DATA;

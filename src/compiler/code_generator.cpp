@@ -29,7 +29,6 @@
 #include <boost/scoped_array.hpp>
 
 using namespace HPHP;
-using namespace std;
 
 ///////////////////////////////////////////////////////////////////////////////
 // statics
@@ -443,7 +442,7 @@ void CodeGenerator::printSubstring(const char *start, int length) {
   const int BUF_LEN = 0x100;
   char buf[BUF_LEN];
   while (length > 0) {
-    int curLength = min(length, BUF_LEN - 1);
+    int curLength = std::min(length, BUF_LEN - 1);
     memcpy(buf, start, curLength);
     buf[curLength] = '\0';
     *m_out << buf;
@@ -561,6 +560,9 @@ int CodeGenerator::checkLiteralString(const std::string &str, int &index,
     assert(false);
   }
   int stringId = ar->getLiteralStringId(str, index);
+  if (m_literalScope) {
+    bs = m_literalScope;
+  }
   if (bs && bs != ar) {
     FileScopePtr fs = bs->getContainingFile();
     if (fs) {
@@ -578,6 +580,7 @@ int CodeGenerator::checkLiteralString(const std::string &str, int &index,
       }
     }
   }
+
   return stringId;
 }
 
@@ -623,7 +626,7 @@ string CodeGenerator::printString(const std::string &str, AnalysisResultPtr ar,
 }
 
 void CodeGenerator::beginHoistedClasses() {
-  m_hoistedClasses = new set<string,stdltistr>();
+  m_hoistedClasses = new std::set<string,stdltistr>();
   m_collectHoistedClasses = true;
 }
 
@@ -650,4 +653,11 @@ bool CodeGenerator::checkHoistedClass(const string &cls) {
     addHoistedClass(cls);
   }
   return false;
+}
+
+int CodeGenerator::ClassScopeCompare::cmp(const ClassScopeRawPtr &p1,
+                                          const ClassScopeRawPtr &p2) const {
+  int d = p1->getRedeclaringId() - p2->getRedeclaringId();
+  if (d) return d;
+  return strcasecmp(p1->getName().c_str(), p2->getName().c_str());
 }

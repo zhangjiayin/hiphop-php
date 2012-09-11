@@ -32,13 +32,13 @@
 namespace HPHP {
 ///////////////////////////////////////////////////////////////////////////////
 
-extern const int q_SpoofChecker$$SINGLE_SCRIPT_CONFUSABLE;
-extern const int q_SpoofChecker$$MIXED_SCRIPT_CONFUSABLE;
-extern const int q_SpoofChecker$$WHOLE_SCRIPT_CONFUSABLE;
-extern const int q_SpoofChecker$$ANY_CASE;
-extern const int q_SpoofChecker$$SINGLE_SCRIPT;
-extern const int q_SpoofChecker$$INVISIBLE;
-extern const int q_SpoofChecker$$CHAR_LIMIT;
+extern const int64 q_SpoofChecker$$SINGLE_SCRIPT_CONFUSABLE;
+extern const int64 q_SpoofChecker$$MIXED_SCRIPT_CONFUSABLE;
+extern const int64 q_SpoofChecker$$WHOLE_SCRIPT_CONFUSABLE;
+extern const int64 q_SpoofChecker$$ANY_CASE;
+extern const int64 q_SpoofChecker$$SINGLE_SCRIPT;
+extern const int64 q_SpoofChecker$$INVISIBLE;
+extern const int64 q_SpoofChecker$$CHAR_LIMIT;
 
 ///////////////////////////////////////////////////////////////////////////////
 // class SpoofChecker
@@ -61,8 +61,6 @@ class c_SpoofChecker : public ExtObjectData {
   DECLARE_METHOD_INVOKE_HELPERS(setallowedlocales);
   public: void t_setchecks(int checks);
   DECLARE_METHOD_INVOKE_HELPERS(setchecks);
-  public: Variant t___destruct();
-  DECLARE_METHOD_INVOKE_HELPERS(__destruct);
 
   // implemented by HPHP
   public: c_SpoofChecker *create();

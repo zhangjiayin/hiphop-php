@@ -17,6 +17,8 @@
 
 #include <runtime/ext/ext_datetime.h>
 
+#include <system/lib/systemlib.h>
+
 namespace HPHP {
 IMPLEMENT_DEFAULT_EXTENSION(date);
 ///////////////////////////////////////////////////////////////////////////////
@@ -116,11 +118,6 @@ Object c_DateTime::t_settimezone(CObjRef timezone) {
   return this;
 }
 
-Variant c_DateTime::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DateTime, DateTime::__destruct);
-  return null;
-}
-
 ObjectData *c_DateTime::clone() {
   ObjectData *obj = ObjectData::clone();
   c_DateTime *dt = static_cast<c_DateTime*>(obj);
@@ -139,8 +136,10 @@ void c_DateTimeZone::t___construct(CStrRef timezone) {
   INSTANCE_METHOD_INJECTION_BUILTIN(DateTimeZone, DateTimeZone::__construct);
   m_tz = NEWOBJ(TimeZone)(timezone);
   if (!m_tz->isValid()) {
-    raise_error("DateTimeZone::__construct(): Unknown or bad timezone (%s)",
-                timezone.data());
+    std::string msg = "DateTimeZone::__construct(): Unknown or bad timezone (";
+    msg += timezone.data();
+    msg += ")";
+    throw Object(SystemLib::AllocExceptionObject(msg));
   }
 }
 
@@ -169,11 +168,6 @@ Array c_DateTimeZone::ti_listabbreviations(const char* cls) {
 Array c_DateTimeZone::ti_listidentifiers(const char* cls) {
   STATIC_METHOD_INJECTION_BUILTIN(DateTimeZone, DateTimeZone::listidentifiers);
   return TimeZone::GetNames();
-}
-
-Variant c_DateTimeZone::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DateTimeZone, DateTimeZone::__destruct);
-  return null;
 }
 
 ObjectData *c_DateTimeZone::clone() {

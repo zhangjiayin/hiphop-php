@@ -29,15 +29,39 @@
 namespace HPHP {
 ///////////////////////////////////////////////////////////////////////////////
 
-extern StaticString s_sys_ss7e5fc106;
-extern StaticString s_sys_ssd332baa7;
-extern StaticString s_sys_ssd59e789f;
-extern StaticString s_sys_ss0d42ecf6;
+extern StaticStringProxy s_sys_ssp7e5fc106;
+#ifndef s_sys_ss7e5fc106
+#define s_sys_ss7e5fc106 (*(StaticString *)(&s_sys_ssp7e5fc106))
+#endif
+extern StaticStringProxy s_sys_ssp5332baa7;
+#ifndef s_sys_ss5332baa7
+#define s_sys_ss5332baa7 (*(StaticString *)(&s_sys_ssp5332baa7))
+#endif
+extern StaticStringProxy s_sys_ssp559e789f;
+#ifndef s_sys_ss559e789f
+#define s_sys_ss559e789f (*(StaticString *)(&s_sys_ssp559e789f))
+#endif
+extern StaticStringProxy s_sys_ssp0d42ecf6;
+#ifndef s_sys_ss0d42ecf6
+#define s_sys_ss0d42ecf6 (*(StaticString *)(&s_sys_ssp0d42ecf6))
+#endif
 
-extern VarNR s_sys_svs7e5fc106;
-extern VarNR s_sys_svsd332baa7;
-extern VarNR s_sys_svsd59e789f;
-extern VarNR s_sys_svs0d42ecf6;
+extern VariantProxy s_sys_svsp7e5fc106;
+#ifndef s_sys_svs7e5fc106
+#define s_sys_svs7e5fc106 (*(Variant *)&s_sys_svsp7e5fc106)
+#endif
+extern VariantProxy s_sys_svsp5332baa7;
+#ifndef s_sys_svs5332baa7
+#define s_sys_svs5332baa7 (*(Variant *)&s_sys_svsp5332baa7)
+#endif
+extern VariantProxy s_sys_svsp559e789f;
+#ifndef s_sys_svs559e789f
+#define s_sys_svs559e789f (*(Variant *)&s_sys_svsp559e789f)
+#endif
+extern VariantProxy s_sys_svsp0d42ecf6;
+#ifndef s_sys_svs0d42ecf6
+#define s_sys_svs0d42ecf6 (*(Variant *)&s_sys_svsp0d42ecf6)
+#endif
 
 /* SRC: classes/splfile.php line 384 */
 FORWARD_DECLARE_CLASS(SplFileObject);
@@ -50,14 +74,16 @@ class c_SplFileObject : public c_SplFileInfo {
   // Class Map
   DECLARE_CLASS_NO_SWEEP(SplFileObject, SplFileObject, SplFileInfo)
   static const ClassPropTable os_prop_table;
-  c_SplFileObject(const ObjectStaticCallbacks *cb = &cw_SplFileObject) : c_SplFileInfo(cb) {}
+  c_SplFileObject(const ObjectStaticCallbacks *cb = &cw_SplFileObject) : c_SplFileInfo(cb) {
+    if (!hhvm) setAttribute(NoDestructor);
+  }
   public: void t___construct(Variant v_filename, Variant v_open_mode = NAMSTR(s_sys_ss0d42ecf6, "r"), Variant v_use_include_path = false, Variant v_context = null);
   public: c_SplFileObject *create(CVarRef v_filename, CVarRef v_open_mode = NAMVAR(s_sys_svs0d42ecf6, "r"), CVarRef v_use_include_path = false_varNR, CVarRef v_context = null_variant);
   public: Variant t_current();
   public: bool t_eof();
   public: bool t_fflush();
   public: String t_fgetc();
-  public: Variant t_fgetcsv(CVarRef v_delimiter = NAMVAR(s_sys_svsd332baa7, ","), CVarRef v_enclosure = NAMVAR(s_sys_svs7e5fc106, "\""), CVarRef v_escape = NAMVAR(s_sys_svsd59e789f, "\\"));
+  public: Variant t_fgetcsv(CVarRef v_delimiter = NAMVAR(s_sys_svs5332baa7, ","), CVarRef v_enclosure = NAMVAR(s_sys_svs7e5fc106, "\""), CVarRef v_escape = NAMVAR(s_sys_svs559e789f, "\\"));
   public: String t_fgets();
   public: String t_fgetss(CVarRef v_allowable_tags);
   public: bool t_flock(CVarRef v_operation, VRefParam rv_wouldblock);
@@ -77,7 +103,7 @@ class c_SplFileObject : public c_SplFileInfo {
   public: void t_next();
   public: void t_rewind();
   public: void t_seek(CVarRef v_line_pos);
-  public: void t_setcsvcontrol(CVarRef v_delimiter = NAMVAR(s_sys_svsd332baa7, ","), CVarRef v_enclosure = NAMVAR(s_sys_svs7e5fc106, "\""), CVarRef v_escape = NAMVAR(s_sys_svsd59e789f, "\\"));
+  public: void t_setcsvcontrol(CVarRef v_delimiter = NAMVAR(s_sys_svs5332baa7, ","), CVarRef v_enclosure = NAMVAR(s_sys_svs7e5fc106, "\""), CVarRef v_escape = NAMVAR(s_sys_svs559e789f, "\\"));
   public: void t_setflags(CVarRef v_flags);
   public: void t_setmaxlinelen(CVarRef v_max_len);
   public: bool t_valid();

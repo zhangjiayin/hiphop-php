@@ -29,6 +29,8 @@
 #include <unicode/utypes.h>
 #include <unicode/unorm.h>
 
+#include <system/lib/systemlib.h>
+
 namespace HPHP {
 IMPLEMENT_DEFAULT_EXTENSION(idn);
 ///////////////////////////////////////////////////////////////////////////////
@@ -465,11 +467,6 @@ bool c_Collator::t_sort(VRefParam arr,
   return ret;
 }
 
-Variant c_Collator::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(Collator, Collator::__destruct);
-  return null;
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 
 #define CHECK_COLL(obj)                                    \
@@ -559,11 +556,6 @@ c_Locale::~c_Locale() {
 void c_Locale::t___construct() {
 }
 
-Variant c_Locale::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(Locale, Locale::__destruct);
-  return null;
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 
 const int64 q_Normalizer$$NONE     = UNORM_NONE;
@@ -585,11 +577,6 @@ c_Normalizer::~c_Normalizer() {
 }
 
 void c_Normalizer::t___construct() {
-}
-
-Variant c_Normalizer::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(Normalizer, Normalizer::__destruct);
-  return null;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

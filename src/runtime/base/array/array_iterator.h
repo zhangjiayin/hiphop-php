@@ -20,9 +20,15 @@
 #include <runtime/base/types.h>
 #include <runtime/base/util/smart_ptr.h>
 #include <runtime/base/complex_types.h>
+#include <runtime/base/array/hphp_array.h>
 
 namespace HPHP {
 ///////////////////////////////////////////////////////////////////////////////
+
+struct TypedValue;
+class c_Vector;
+class c_Map;
+class c_StableMap;
 
 /**
  * An iteration normally looks like this:
@@ -41,53 +47,141 @@ public:
    * Constructors.
    */
   ArrayIter();
-  ArrayIter(const ArrayData *data);
+  ArrayIter(const ArrayData* data);
+  ArrayIter(const ArrayData* data, int);
   ArrayIter(CArrRef array);
-  ArrayIter(ObjectData *obj, bool rewind = true);
+  ArrayIter(ObjectData* obj, bool rewind = true);
   ~ArrayIter();
 
   operator bool() { return !end(); }
   void operator++() { next(); }
 
   bool end() {
-    if (!m_obj) {
+    if (LIKELY(hasArrayData())) {
       return m_pos == ArrayData::invalid_index;
     }
     return endHelper();
   }
   void next() {
-    if (!m_obj) {
-      ASSERT(m_data);
+    if (LIKELY(hasArrayData())) {
+      const ArrayData* ad = getArrayData();
+      ASSERT(ad);
       ASSERT(m_pos != ArrayData::invalid_index);
-      m_pos = m_data->iter_advance(m_pos);
+      m_pos = ad->iter_advance(m_pos);
       return;
     }
-    return nextHelper();
+    nextHelper();
   }
   Variant first() {
-    if (!m_obj) {
-      ASSERT(m_data);
+    if (LIKELY(hasArrayData())) {
+      const ArrayData* ad = getArrayData();
+      ASSERT(ad);
       ASSERT(m_pos != ArrayData::invalid_index);
-      return m_data->getKey(m_pos);
+      return ad->getKey(m_pos);
     }
     return firstHelper();
   }
   Variant second();
   void second(Variant &v) {
-    if (!m_obj) {
-      ASSERT(m_data);
+    if (LIKELY(hasArrayData())) {
+      const ArrayData* ad = getArrayData();
+      ASSERT(ad);
       ASSERT(m_pos != ArrayData::invalid_index);
-      v = m_data->getValueRef(m_pos);
+      v = ad->getValueRef(m_pos);
       return;
     }
     secondHelper(v);
   }
   CVarRef secondRef();
 
+  bool isHphpArray() {
+    ASSERT(hasArrayData());
+    const ArrayData* ad = getArrayData();
+    ASSERT(ad);
+    return IsHphpArray(ad);
+  }
+
+  void nvFirst(TypedValue* out) {
+    ASSERT(hasArrayData());
+    const ArrayData* ad = getArrayData();
+    ASSERT(ad);
+    ASSERT(m_pos != ArrayData::invalid_index);
+    ASSERT(isHphpArray());
+    HphpArray* ha = (HphpArray*)ad;
+    ha->nvGetKey(out, m_pos);
+  }
+
+  TypedValue* nvSecond() {
+    ASSERT(hasArrayData());
+    const ArrayData* ad = getArrayData();
+    ASSERT(ad);
+    ASSERT(m_pos != ArrayData::invalid_index);
+    ASSERT(isHphpArray());
+    HphpArray* ha = (HphpArray*)ad;
+    return ha->nvGetValueRef(m_pos);
+  }
+
 private:
-  const ArrayData *m_data;
-  ObjectData *m_obj;
+  union {
+    const ArrayData* m_data;
+    ObjectData* m_obj;
+  };
   ssize_t m_pos;
+  int m_versionNumber;
+
+  bool hasArrayData() {
+    return !((intptr_t)m_data & 1);
+  }
+  bool hasVector() {
+    return (!hasArrayData() &&
+            getRawObject()->getCollectionType() == Collection::VectorType);
+  }
+  bool hasMap() {
+    return (!hasArrayData() &&
+            getRawObject()->getCollectionType() == Collection::MapType);
+  }
+  bool hasStableMap() {
+    return (!hasArrayData() &&
+            getRawObject()->getCollectionType() == Collection::StableMapType);
+  }
+  bool hasObject() {
+    return (!hasArrayData() &&
+            getRawObject()->getCollectionType() == Collection::InvalidType);
+  }
+
+  const ArrayData* getArrayData() {
+    ASSERT(hasArrayData());
+    return m_data;
+  }
+  c_Vector* getVector() {
+    ASSERT(hasVector());
+    return (c_Vector*)((intptr_t)m_obj & ~1);
+  }
+  c_Map* getMap() {
+    ASSERT(hasMap());
+    return (c_Map*)((intptr_t)m_obj & ~1);
+  }
+  c_StableMap* getStableMap() {
+    ASSERT(hasStableMap());
+    return (c_StableMap*)((intptr_t)m_obj & ~1);
+  }
+  ObjectData* getObject() {
+    ASSERT(hasObject());
+    return (ObjectData*)((intptr_t)m_obj & ~1);
+  }
+  ObjectData* getRawObject() {
+    ASSERT(!hasArrayData());
+    return (ObjectData*)((intptr_t)m_obj & ~1);
+  }
+
+  void setArrayData(const ArrayData* ad) {
+    ASSERT((intptr_t(ad) & 1) == 0);
+    m_data = ad;
+  }
+  void setObject(ObjectData* obj) {
+    ASSERT((intptr_t(obj) & 1) == 0);
+    m_obj = (ObjectData*)((intptr_t)obj | 1);
+  }
 
   bool endHelper();
   void nextHelper();
@@ -97,10 +191,36 @@ private:
 
 ///////////////////////////////////////////////////////////////////////////////
 
+/**
+ * FullPos represents a position in an array that could reallocate; so we store
+ * information to access an element, instead of a pointer directly to
+ * the element.
+ *
+ * Each Array with an active MutableArrayIter keeps a linked list of active
+ * FullPos's; list is maintained through the FullPos.next fields and the
+ * head is ArrayData.m_strongIterators.
+ */
 struct FullPos {
-  ssize_t pos;
-  ArrayData * container;
-  FullPos() : pos(0), container(NULL) {}
+  ssize_t pos;  // pos within container
+  ArrayData* container; // the array itself
+  FullPos* next; // next FullPos of another iterator for the same array
+  FullPos() : pos(0), container(NULL), next(NULL) {}
+};
+
+/**
+ * Range which visits each entry in a list of FullPos.  Removing the
+ * front element will crash but removing an already-visited element
+ * or future element will work.
+ */
+class FullPosRange {
+public:
+  FullPosRange(FullPos* list) : m_fp(list) {}
+  FullPosRange(const FullPosRange& other) : m_fp(other.m_fp) {}
+  bool empty() const { return m_fp == 0; }
+  FullPos* front() const { ASSERT(!empty()); return m_fp; }
+  void popFront() { ASSERT(!empty()); m_fp = m_fp->next; }
+private:
+  FullPos* m_fp;
 };
 
 /**
@@ -125,6 +245,36 @@ private:
   FullPos m_fp;
   int size();
   ArrayData* getData();
+  ArrayData* cowCheck();
+  void escalateCheck();
+};
+
+struct MIterCtx {
+  TypedValue m_key;
+  TypedValue m_val;
+  const RefData* m_ref;
+  MutableArrayIter *m_mArray; // big! Defer allocation.
+  MIterCtx(ArrayData *ad) {
+    ASSERT(!ad->isStatic());
+    tvWriteUninit(&m_key);
+    tvWriteUninit(&m_val);
+    m_ref = NULL;
+    m_mArray = new MutableArrayIter(ad, &tvAsVariant(&m_key),
+                                    tvAsVariant(&m_val));
+  }
+  MIterCtx(const RefData* ref) {
+    tvWriteUninit(&m_key);
+    tvWriteUninit(&m_val);
+    // Reference must be an inner cell
+    ASSERT(ref->_count > 0);
+    m_ref = ref;
+    m_ref->incRefCount();
+    // Bind ref to m_var
+    m_mArray = new MutableArrayIter((Variant*)(ref->tv()),
+                                    &tvAsVariant(&m_key),
+                                    tvAsVariant(&m_val));
+  }
+  ~MIterCtx();
 };
 
 ///////////////////////////////////////////////////////////////////////////////

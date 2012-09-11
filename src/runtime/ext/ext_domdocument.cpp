@@ -20,6 +20,7 @@
 #include <runtime/ext/ext_class.h>
 #include <runtime/base/runtime_error.h>
 #include <runtime/ext/ext_function.h>
+#include <runtime/vm/translator/translator-inline.h>
 
 #include <system/lib/systemlib.h>
 
@@ -34,8 +35,6 @@
 #define PHP_DOM_XPATH_QUERY 0
 #define PHP_DOM_XPATH_EVALUATE 1
 #define DOM_NODESET XML_XINCLUDE_START
-
-using namespace std;
 
 namespace HPHP {
 IMPLEMENT_DEFAULT_EXTENSION(dom);
@@ -108,6 +107,13 @@ static void php_libxml_internal_error_handler(int error_type, void *ctx,
     }
   }
 }
+
+/**
+ * The error handler callbacks below are called from libxml code
+ * that is compiled without frame pointers, so it's necessary to do
+ * SYNC_VM_REGS_SCOPED() before calling libxml code that uses these
+ * error handler callbacks.
+ */
 
 static void php_libxml_ctx_error(void *ctx, const char *msg, ...) {
   va_list args;
@@ -1167,7 +1173,7 @@ static Variant php_dom_create_object(xmlNodePtr obj, p_DOMDocument doc,
     ASSERT(doc->m_classmap[clsname].isString()); // or const char * is not safe
     clsname = doc->m_classmap[clsname].toString().data();
   }
-  Object wrapper = create_object(clsname, Array(), false);
+  Object wrapper = create_object_only(clsname);
   c_DOMNode *nodeobj = wrapper.getTyped<c_DOMNode>();
   nodeobj->m_doc = doc;
   nodeobj->m_node = obj;
@@ -1881,11 +1887,6 @@ c_DOMNode::~c_DOMNode() {
 void c_DOMNode::t___construct() {
 }
 
-Variant c_DOMNode::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DOMNode, DOMNode::__destruct);
-  return null;
-}
-
 Variant c_DOMNode::t___get(Variant name) {
   INSTANCE_METHOD_INJECTION_BUILTIN(DOMNode, DOMNode::__get);
   return domnode_properties_map.getter(name)(this);
@@ -2475,11 +2476,6 @@ void c_DOMAttr::t___construct(CStrRef name,
   }
 }
 
-Variant c_DOMAttr::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DOMAttr, DOMAttr::__destruct);
-  return null;
-}
-
 Variant c_DOMAttr::t___get(Variant name) {
   INSTANCE_METHOD_INJECTION_BUILTIN(DOMAttr, DOMAttr::__get);
   return domattr_properties_map.getter(name)(this);
@@ -2550,11 +2546,6 @@ c_DOMCharacterData::~c_DOMCharacterData() {
 }
 
 void c_DOMCharacterData::t___construct() {
-}
-
-Variant c_DOMCharacterData::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DOMCharacterData, DOMCharacterData::__destruct);
-  return null;
 }
 
 Variant c_DOMCharacterData::t___get(Variant name) {
@@ -2728,11 +2719,6 @@ void c_DOMComment::t___construct(CStrRef value /* = null_string */) {
   }
 }
 
-Variant c_DOMComment::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DOMComment, DOMComment::__destruct);
-  return null;
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 
 static Variant dom_text_whole_text_read(CObjRef obj) {
@@ -2781,11 +2767,6 @@ void c_DOMText::t___construct(CStrRef value /* = 'null_string' */) {
   if (!m_node) {
     php_dom_throw_error(INVALID_STATE_ERR, 1);
   }
-}
-
-Variant c_DOMText::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DOMText, DOMText::__destruct);
-  return null;
 }
 
 Variant c_DOMText::t___get(Variant name) {
@@ -2863,11 +2844,6 @@ void c_DOMCDATASection::t___construct(CStrRef value) {
   if (!m_node) {
     php_dom_throw_error(INVALID_STATE_ERR, 1);
   }
-}
-
-Variant c_DOMCDATASection::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DOMCDATASection, DOMCDATASection::__destruct);
-  return null;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -3096,11 +3072,6 @@ void c_DOMDocument::t___construct(CStrRef version /* = null_string */,
   }
   m_node = (xmlNodePtr)docp;
   m_owner = true;
-}
-
-Variant c_DOMDocument::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DOMDocument, DOMDocument::__destruct);
-  return null;
 }
 
 Variant c_DOMDocument::t___get(Variant name) {
@@ -3424,6 +3395,7 @@ Variant c_DOMDocument::t_importnode(CObjRef importednode,
 
 Variant c_DOMDocument::t_load(CStrRef filename, int64 options /* = 0 */) {
   INSTANCE_METHOD_INJECTION_BUILTIN(DOMDocument, DOMDocument::load);
+  SYNC_VM_REGS_SCOPED();
   String translated = File::TranslatePath(filename);
   if (translated.empty()) {
     raise_warning("Unable to read file: %s", filename.data());
@@ -3434,11 +3406,13 @@ Variant c_DOMDocument::t_load(CStrRef filename, int64 options /* = 0 */) {
 
 Variant c_DOMDocument::t_loadhtml(CStrRef source) {
   INSTANCE_METHOD_INJECTION_BUILTIN(DOMDocument, DOMDocument::loadhtml);
+  SYNC_VM_REGS_SCOPED();
   return dom_load_html(this, source, DOM_LOAD_STRING);
 }
 
 Variant c_DOMDocument::t_loadhtmlfile(CStrRef filename) {
   INSTANCE_METHOD_INJECTION_BUILTIN(DOMDocument, DOMDocument::loadhtmlfile);
+  SYNC_VM_REGS_SCOPED();
   String translated = File::TranslatePath(filename);
   if (translated.empty()) {
     raise_warning("Unable to read file: %s", filename.data());
@@ -3449,6 +3423,7 @@ Variant c_DOMDocument::t_loadhtmlfile(CStrRef filename) {
 
 Variant c_DOMDocument::t_loadxml(CStrRef source, int64 options /* = 0 */) {
   INSTANCE_METHOD_INJECTION_BUILTIN(DOMDocument, DOMDocument::loadxml);
+  SYNC_VM_REGS_SCOPED();
   return dom_parse_document(this, source, options, DOM_LOAD_STRING);
 }
 
@@ -3464,8 +3439,8 @@ bool c_DOMDocument::t_registernodeclass(CStrRef baseclass,
     raise_error("Class %s does not exist", baseclass.data());
     return false;
   }
-  if (!f_is_subclass_of(baseclass, "DOMNode")) {
-    raise_error("Class %s is not derived from DOMNode.", baseclass.data());
+  if (!f_is_a(baseclass, "DOMNode", true)) {
+    raise_error("Class %s is not DOMNode or derived from it.", baseclass.data());
     return false;
   }
   if (!class_exists(extendedclass)) {
@@ -3483,11 +3458,13 @@ bool c_DOMDocument::t_registernodeclass(CStrRef baseclass,
 
 bool c_DOMDocument::t_relaxngvalidate(CStrRef filename) {
   INSTANCE_METHOD_INJECTION_BUILTIN(DOMDocument, DOMDocument::relaxngvalidate);
+  SYNC_VM_REGS_SCOPED();
   return _dom_document_relaxNG_validate(this, filename, DOM_LOAD_FILE);
 }
 
 bool c_DOMDocument::t_relaxngvalidatesource(CStrRef source) {
   INSTANCE_METHOD_INJECTION_BUILTIN(DOMDocument, DOMDocument::relaxngvalidatesource);
+  SYNC_VM_REGS_SCOPED();
   return _dom_document_relaxNG_validate(this, source, DOM_LOAD_STRING);
 }
 
@@ -3612,16 +3589,19 @@ Variant c_DOMDocument::t_savexml(CObjRef node /* = null_object */,
 
 bool c_DOMDocument::t_schemavalidate(CStrRef filename) {
   INSTANCE_METHOD_INJECTION_BUILTIN(DOMDocument, DOMDocument::schemavalidate);
+  SYNC_VM_REGS_SCOPED();
   return _dom_document_schema_validate(this, filename, DOM_LOAD_FILE);
 }
 
 bool c_DOMDocument::t_schemavalidatesource(CStrRef source) {
   INSTANCE_METHOD_INJECTION_BUILTIN(DOMDocument, DOMDocument::schemavalidatesource);
+  SYNC_VM_REGS_SCOPED();
   return _dom_document_schema_validate(this, source, DOM_LOAD_STRING);
 }
 
 bool c_DOMDocument::t_validate() {
   INSTANCE_METHOD_INJECTION_BUILTIN(DOMDocument, DOMDocument::validate);
+  SYNC_VM_REGS_SCOPED();
   xmlDocPtr docp = (xmlDocPtr)m_node;
   xmlValidCtxt *cvp;
   if (docp->intSubset == NULL) {
@@ -3673,11 +3653,6 @@ void c_DOMDocumentFragment::t___construct() {
   if (!m_node) {
     php_dom_throw_error(INVALID_STATE_ERR, 1);
   }
-}
-
-Variant c_DOMDocumentFragment::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DOMDocumentFragment, DOMDocumentFragment::__destruct);
-  return null;
 }
 
 bool c_DOMDocumentFragment::t_appendxml(CStrRef data) {
@@ -3796,11 +3771,6 @@ c_DOMDocumentType::~c_DOMDocumentType() {
 void c_DOMDocumentType::t___construct() {
 }
 
-Variant c_DOMDocumentType::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DOMDocumentType, DOMDocumentType::__destruct);
-  return null;
-}
-
 Variant c_DOMDocumentType::t___get(Variant name) {
   INSTANCE_METHOD_INJECTION_BUILTIN(DOMDocumentType, DOMDocumentType::__get);
   return domdocumenttype_properties_map.getter(name)(this);
@@ -3914,11 +3884,6 @@ void c_DOMElement::t___construct(CStrRef name,
     xmlNodeSetContentLen(nodep, (xmlChar *)value.data(), value.size());
   }
   m_node = nodep;
-}
-
-Variant c_DOMElement::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DOMElement, DOMElement::__destruct);
-  return null;
 }
 
 Variant c_DOMElement::t___get(Variant name) {
@@ -4537,11 +4502,6 @@ c_DOMEntity::~c_DOMEntity() {
 void c_DOMEntity::t___construct() {
 }
 
-Variant c_DOMEntity::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DOMEntity, DOMEntity::__destruct);
-  return null;
-}
-
 Variant c_DOMEntity::t___get(Variant name) {
   INSTANCE_METHOD_INJECTION_BUILTIN(DOMEntity, DOMEntity::__get);
   return domentity_properties_map.getter(name)(this);
@@ -4579,11 +4539,6 @@ void c_DOMEntityReference::t___construct(CStrRef name) {
   if (!m_node) {
     php_dom_throw_error(INVALID_STATE_ERR, 1);
   }
-}
-
-Variant c_DOMEntityReference::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DOMEntityReference, DOMEntityReference::__destruct);
-  return null;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -4633,11 +4588,6 @@ c_DOMNotation::~c_DOMNotation() {
 }
 
 void c_DOMNotation::t___construct() {
-}
-
-Variant c_DOMNotation::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DOMNotation, DOMNotation::__destruct);
-  return null;
 }
 
 Variant c_DOMNotation::t___get(Variant name) {
@@ -4715,11 +4665,6 @@ void c_DOMProcessingInstruction::t___construct(CStrRef name,
   }
 }
 
-Variant c_DOMProcessingInstruction::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DOMProcessingInstruction, DOMProcessingInstruction::__destruct);
-  return null;
-}
-
 Variant c_DOMProcessingInstruction::t___get(Variant name) {
   INSTANCE_METHOD_INJECTION_BUILTIN(DOMProcessingInstruction, DOMProcessingInstruction::__get);
   return domprocessinginstruction_properties_map.getter(name)(this);
@@ -4781,11 +4726,6 @@ c_DOMNamedNodeMap::~c_DOMNamedNodeMap() {
 }
 
 void c_DOMNamedNodeMap::t___construct() {
-}
-
-Variant c_DOMNamedNodeMap::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DOMNamedNodeMap, DOMNamedNodeMap::__destruct);
-  return null;
 }
 
 Variant c_DOMNamedNodeMap::t_getnameditem(CStrRef name) {
@@ -4988,11 +4928,6 @@ c_DOMNodeList::~c_DOMNodeList() {
 void c_DOMNodeList::t___construct() {
 }
 
-Variant c_DOMNodeList::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DOMNodeList, DOMNodeList::__destruct);
-  return null;
-}
-
 Variant c_DOMNodeList::t___get(Variant name) {
   INSTANCE_METHOD_INJECTION_BUILTIN(DOMNodeList, DOMNodeList::__get);
   return domnodelist_properties_map.getter(name)(this);
@@ -5068,18 +5003,14 @@ Variant c_DOMNodeList::t_getiterator() {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-c_DOMImplementation::c_DOMImplementation(const ObjectStaticCallbacks *cb) : ExtObjectData(cb) {
+c_DOMImplementation::c_DOMImplementation(const ObjectStaticCallbacks *cb)
+  : ExtObjectData(cb) {
 }
 
 c_DOMImplementation::~c_DOMImplementation() {
 }
 
 void c_DOMImplementation::t___construct() {
-}
-
-Variant c_DOMImplementation::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DOMImplementation, DOMImplementation::__destruct);
-  return null;
 }
 
 Variant c_DOMImplementation::t_createdocument
@@ -5393,11 +5324,6 @@ void c_DOMXPath::t___construct(CVarRef doc) {
   ctx->userData = this;
 }
 
-Variant c_DOMXPath::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DOMXPath, DOMXPath::__destruct);
-  return null;
-}
-
 Variant c_DOMXPath::t___get(Variant name) {
   INSTANCE_METHOD_INJECTION_BUILTIN(DOMXPath, DOMXPath::__get);
   return domxpath_properties_map.getter(name)(this);
@@ -5530,11 +5456,6 @@ void c_DOMNodeIterator::set_iterator(ObjectData* o, dom_iterable *objmap) {
 }
 
 void c_DOMNodeIterator::t___construct() {
-}
-
-Variant c_DOMNodeIterator::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(DOMNodeIterator, DOMNodeIterator::__destruct);
-  return null;
 }
 
 Variant c_DOMNodeIterator::t_current() {

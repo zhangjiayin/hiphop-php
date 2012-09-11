@@ -149,26 +149,9 @@ EndClass();
 
 BeginClass(
   array(
-    'name' => 'GeneratorClosure',
-    'parent' => 'Closure',
-    'footer' => <<<EOT
-public:
-  /**
-   * This is the constructor which is called internally-
-   * PHP code will never be able to call this constructor
-   */
-  c_GeneratorClosure(
-    const CallInfo *callInfo,
-    void *extraData,
-    CArrRef vars) :
-    c_Closure(callInfo, extraData, &cw_GeneratorClosure), m_vars(vars) {}
-public:
-  Array          m_vars;    /* use variables    */
-  LVariableTable m_statics; /* static variables */
-EOT
-,
-  )
-);
+    'name' => "DummyClosure",
+    'desc' => "Represents an invalid closure which will fatal when used.",
+  ));
 
 DefineFunction(
   array(

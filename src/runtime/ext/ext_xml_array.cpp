@@ -65,12 +65,9 @@ namespace HPHP {
         }
 
         ~XmlArrResult() {
-            
             while(astack.size() > 0) {
                 astack.pop();
             }
-            
-            //astack.clear();
         }
     };
 
@@ -205,10 +202,10 @@ namespace HPHP {
     }
 
     /**
-     * utf8 锟斤拷锟街斤拷锟斤拷位为0
-     * 锟斤拷锟街节碉拷一锟斤拷锟斤拷位为1  锟皆猴拷每锟斤拷一锟斤拷1 锟斤拷示 锟斤拷一锟斤拷锟街节憋拷示,
-     * 锟斤拷锟斤拷锟斤拷 锟斤拷锟斤拷锟斤拷 0x80 & (1000 0000) 锟叫讹拷  锟斤拷锟街斤拷
-     * 锟斤拷要锟斤拷锟斤拷锟斤拷 cpp锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷时锟津不伙拷锟斤拷 锟街凤拷锟斤拷锟截讹拷 锟节匡拷锟斤拷一锟捷革拷锟斤拷锟斤拷
+     * utf8 单字节首位为0
+     * 多字节第一个首位为1  以后每多一个1 表示 多一个字节表示,
+     * 就这里 就是用 0x80 & (1000 0000) 判断  多字节
+     * 需要传长度 cpp里面解析的时候不会把 字符串截断 在拷贝一份给你的
      */
     int is_multibyte(const char *s, int len) {
         int i = 0;
@@ -293,7 +290,7 @@ namespace HPHP {
 
     }
 
-    //貌锟狡很硷拷锟斤拷
+    //貌似很简单
     static void xml_text(void * data, const xmlChar *c, int len)
     {
         String v_name("_v");

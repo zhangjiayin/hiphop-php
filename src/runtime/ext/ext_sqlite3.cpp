@@ -20,6 +20,8 @@
 #include <runtime/ext/ext_function.h>
 #include <runtime/base/util/exceptions.h>
 
+#include <system/lib/systemlib.h>
+
 namespace HPHP {
 IMPLEMENT_DEFAULT_EXTENSION(sqlite3);
 ///////////////////////////////////////////////////////////////////////////////
@@ -170,7 +172,12 @@ c_SQLite3::~c_SQLite3() {
   }
 }
 
-void c_SQLite3::t___construct() {
+void c_SQLite3::t___construct(CStrRef filename,
+                       int64 flags /* = k_SQLITE3_OPEN_READWRITE |
+                                      k_SQLITE3_OPEN_CREATE */,
+                       CStrRef encryption_key /* = null_string */) {
+  INSTANCE_METHOD_INJECTION_BUILTIN(SQLite3, SQLite3::__construct);
+  t_open(filename, flags, encryption_key);
 }
 
 void c_SQLite3::validate() const {
@@ -206,6 +213,18 @@ void c_SQLite3::t_open(CStrRef filename,
     throw Exception("Unable to open database: %s", sqlite3_errmsg(m_raw_db));
   }
 #endif
+}
+
+bool c_SQLite3::t_busytimeout(int64 msecs) {
+  INSTANCE_METHOD_INJECTION_BUILTIN(SQLite3, SQLite3::busytimeout);
+  validate();
+  int errcode = sqlite3_busy_timeout(m_raw_db, msecs);
+  if (errcode != SQLITE_OK) {
+    raise_warning("Unable to set busy timeout: %d, %s", errcode,
+                  sqlite3_errmsg(m_raw_db));
+    return false;
+  }
+  return true;
 }
 
 bool c_SQLite3::t_close() {
@@ -426,11 +445,6 @@ bool c_SQLite3::t_openblob(CStrRef table, CStrRef column, int64 rowid,
   throw NotSupportedException(__func__, "sqlite3 stream");
 }
 
-Variant c_SQLite3::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(SQLite3, SQLite3::__destruct);
-  return null;
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 
 c_SQLite3Stmt::c_SQLite3Stmt(const ObjectStaticCallbacks *cb) :
@@ -559,7 +573,7 @@ Variant c_SQLite3Stmt::t_execute() {
         if (p.value.isResource()) {
           Variant blob = f_stream_get_contents(p.value);
           if (same(blob, false)) {
-            raise_warning("Unable to read stream for parameter %ld",
+            raise_warning("Unable to read stream for parameter %d",
                           p.index);
             return false;
           }
@@ -582,7 +596,7 @@ Variant c_SQLite3Stmt::t_execute() {
       sqlite3_bind_null(m_raw_stmt, p.index);
       break;
     default:
-      raise_warning("Unknown parameter type: %ld for parameter %ld",
+      raise_warning("Unknown parameter type: %d for parameter %d",
                     p.type, p.index);
       return false;
     }
@@ -605,11 +619,6 @@ Variant c_SQLite3Stmt::t_execute() {
                   sqlite3_errmsg(sqlite3_db_handle(m_raw_stmt)));
   }
   return false;
-}
-
-Variant c_SQLite3Stmt::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(SQLite3Stmt, SQLite3Stmt::__destruct);
-  return null;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -690,11 +699,6 @@ bool c_SQLite3Result::t_finalize() {
   validate();
   m_stmt.reset();
   return true;
-}
-
-Variant c_SQLite3Result::t___destruct() {
-  INSTANCE_METHOD_INJECTION_BUILTIN(SQLite3Result, SQLite3Result::__destruct);
-  return null;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

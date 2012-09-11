@@ -22,23 +22,27 @@
 #include <runtime/base/complex_types.h>
 #include <runtime/base/variable_serializer.h>
 #include <runtime/base/array/zend_array.h>
+#include <runtime/base/array/vector_array.h>
 #include <runtime/base/runtime_option.h>
 #include <runtime/base/macros.h>
 #include <util/exception.h>
 #include <tbb/concurrent_hash_map.h>
 
-using namespace std;
-
 namespace HPHP {
 ///////////////////////////////////////////////////////////////////////////////
 
-typedef tbb::concurrent_hash_map<std::string, ArrayData *,
-                                 stringHashCompare> ArrayDataMap;
+typedef tbb::concurrent_hash_map<const StringData *, ArrayData *,
+                                 StringDataHashCompare> ArrayDataMap;
 static ArrayDataMap s_arrayDataMap;
 
-ArrayData *ArrayData::GetScalarArray(ArrayData *arr) {
-  String s = f_serialize(arr);
-  string key(s.data(), s.size());
+ArrayData *ArrayData::GetScalarArray(ArrayData *arr,
+                                     const StringData *key /* = NULL */) {
+  if (key == NULL) {
+    key = StringData::GetStaticString(f_serialize(arr).get());
+  } else {
+    ASSERT(key->isStatic());
+    ASSERT(key->same(f_serialize(arr).get()));
+  }
   ArrayDataMap::accessor acc;
   if (s_arrayDataMap.insert(acc, key)) {
     ArrayData *ad = arr->nonSmartCopy();
@@ -51,11 +55,22 @@ ArrayData *ArrayData::GetScalarArray(ArrayData *arr) {
 
 // constructors/destructors
 
+HOT_FUNC
 ArrayData *ArrayData::Create() {
+  if (enable_vector_array && RuntimeOption::UseVectorArray) {
+    return StaticEmptyVectorArray::Get();
+  }
   return ArrayInit((ssize_t)0).create();
 }
 
+HOT_FUNC
 ArrayData *ArrayData::Create(CVarRef value) {
+  if (enable_vector_array && RuntimeOption::UseVectorArray) {
+    VectorArray *va = NEW(VectorArray)(1);
+    va->VectorArray::append(value, false);
+    va->m_pos = 0;
+    return va;
+  }
   ArrayInit init(1);
   init.set(value);
   return init.create();
@@ -69,6 +84,12 @@ ArrayData *ArrayData::Create(CVarRef name, CVarRef value) {
 }
 
 ArrayData *ArrayData::CreateRef(CVarRef value) {
+  if (enable_vector_array && RuntimeOption::UseVectorArray) {
+    VectorArray *va = NEW(VectorArray)(1);
+    va->VectorArray::appendRef(value, false);
+    va->m_pos = 0;
+    return va;
+  }
   ArrayInit init(1);
   init.setRef(value);
   return init.create();
@@ -81,10 +102,11 @@ ArrayData *ArrayData::CreateRef(CVarRef name, CVarRef value) {
   return init.create();
 }
 
+HOT_FUNC
 ArrayData::~ArrayData() {
   // If there are any strong iterators pointing to this array, they need
   // to be invalidated.
-  if (!m_strongIterators.empty()) {
+  if (m_strongIterators) {
     freeStrongIterators();
   }
 }
@@ -97,20 +119,18 @@ ArrayData *ArrayData::nonSmartCopy() const {
 // reads
 
 Object ArrayData::toObject() const {
-  return ObjectData::FromArray(const_cast<ArrayData *>(this));
+  return hhvm
+         ? VM::Instance::FromArray(const_cast<ArrayData *>(this))
+         : ObjectData::FromArray(const_cast<ArrayData *>(this));
 }
 
 bool ArrayData::isVectorData() const {
-  for (ssize_t i = 0; i < size(); i++) {
+  for (ssize_t i = 0, n = size(); i < n; i++) {
     if (getIndex(i) != i) {
       return false;
     }
   }
   return true;
-}
-
-bool ArrayData::isGlobalArrayWrapper() const {
-  return false;
 }
 
 int ArrayData::compare(const ArrayData *v2) const {
@@ -171,10 +191,6 @@ bool ArrayData::equal(const ArrayData *v2, bool strict) const {
   }
 
   return true;
-}
-
-void ArrayData::load(CVarRef k, Variant &v) const {
-  if (exists(k)) v = get(k);
 }
 
 ArrayData *ArrayData::lvalPtr(CStrRef k, Variant *&ret, bool copy,
@@ -266,32 +282,21 @@ ArrayData *ArrayData::dequeue(Variant &value) {
 
 void ArrayData::newFullPos(FullPos &fp) {
   ASSERT(fp.container == NULL);
-  m_strongIterators.push(&fp);
-  fp.container = (ArrayData*)this;
+  fp.container = this;
+  fp.next = m_strongIterators;
+  m_strongIterators = &fp;
   getFullPos(fp);
 }
 
 void ArrayData::freeFullPos(FullPos &fp) {
   ASSERT(fp.container == (ArrayData*)this);
-  int sz = m_strongIterators.size();
-  if (sz > 0) {
-    // Common case: fp is at the end of the list
-    if (m_strongIterators.get(sz - 1) == &fp) {
-      m_strongIterators.pop();
+  // search for fp in our list, then remove it.  Usually its the first one.
+  for (FullPos **prev = &m_strongIterators, *p = *prev; p != 0;
+       prev = &p->next, p = p->next) {
+    if (p == &fp) {
+      *prev = p->next;
       fp.container = NULL;
       return;
-    }
-    // Unusual case: somehow the strong iterator for an foreach loop
-    // was freed before a strong iterator from a nested foreach loop,
-    // so do a linear search for fp
-    for (int k = sz - 2; k >= 0; --k) {
-      if (m_strongIterators.get(k) == &fp) {
-        // Swap fp with the last element in the list and then pop
-        m_strongIterators.set(k, m_strongIterators.get(sz - 1));
-        m_strongIterators.pop();
-        fp.container = NULL;
-        return;
-      }
     }
   }
   // If the strong iterator list was empty or if fp could not be
@@ -310,11 +315,10 @@ bool ArrayData::setFullPos(const FullPos &fp) {
 }
 
 void ArrayData::freeStrongIterators() {
-  int sz = m_strongIterators.size();
-  for (int i = 0; i < sz; ++i) {
-    m_strongIterators.get(i)->container = NULL;
+  for (FullPosRange r(m_strongIterators); !r.empty(); r.popFront()) {
+    r.front()->container = NULL;
   }
-  m_strongIterators.clear();
+  m_strongIterators = 0;
 }
 
 CVarRef ArrayData::currentRef() {
@@ -328,6 +332,9 @@ CVarRef ArrayData::endRef() {
     return getValueRef(size() - 1);
   }
   throw FatalErrorException("invalid ArrayData::m_pos");
+}
+ArrayData* ArrayData::copyWithStrongIterators() const {
+  throw FatalErrorException("Unimplemented ArrayData::copyWithStrongIterators");
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -360,15 +367,18 @@ Variant ArrayData::current() const {
   return false;
 }
 
+static StaticString s_value("value");
+static StaticString s_key("key");
+
 Variant ArrayData::each() {
   if (m_pos >= 0 && m_pos < size()) {
     Array ret;
     Variant key(getKey(m_pos));
     Variant value(getValue(m_pos));
     ret.set(1, value);
-    ret.set("value", value);
+    ret.set(s_value, value);
     ret.set(0, key);
-    ret.set("key", key);
+    ret.set(s_key, key);
     ++m_pos;
     return ret;
   }
@@ -405,12 +415,7 @@ ssize_t ArrayData::iter_rewind(ssize_t prev) const {
 void ArrayData::serializeImpl(VariableSerializer *serializer) const {
   serializer->writeArrayHeader(this, size());
   for (ArrayIter iter(this); iter; ++iter) {
-    Variant key(iter.first());
-    if (key.isInteger()) {
-      serializer->writeArrayKey(this, key.toInt64());
-    } else {
-      serializer->writeArrayKey(this, key.toString());
-    }
+    serializer->writeArrayKey(this, iter.first());
     serializer->writeArrayValue(this, iter.secondRef());
   }
   serializer->writeArrayFooter(this);
@@ -443,7 +448,7 @@ bool ArrayData::hasInternalReference(PointerSet &vars,
   for (ArrayIter iter(this); iter; ++iter) {
     CVarRef var = iter.secondRef();
     if (var.isReferenced()) {
-      Variant *pvar = var.getVariantData();
+      Variant *pvar = var.getRefData();
       if (vars.find(pvar) != vars.end()) {
         return true;
       }
@@ -476,7 +481,7 @@ bool ArrayData::hasInternalReference(PointerSet &vars,
 }
 
 void ArrayData::dump() {
-  string out; dump(out); printf("%s", out.c_str());
+  string out; dump(out); fwrite(out.c_str(), out.size(), 1, stdout);
 }
 
 void ArrayData::dump(std::string &out) {
@@ -485,7 +490,7 @@ void ArrayData::dump(std::string &out) {
   out += "ArrayData(";
   out += boost::lexical_cast<string>(_count);
   out += "): ";
-  out += ret.data();
+  out += string(ret.data(), ret.size());
 }
 
 void ArrayData::dump(std::ostream &out) {
@@ -501,7 +506,7 @@ void ArrayData::dump(std::ostream &out) {
     } catch (const Exception &e) {
       out << "Exception: " << e.what();
     }
-    out << endl;
+    out << std::endl;
   }
 }
 

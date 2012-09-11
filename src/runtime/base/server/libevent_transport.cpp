@@ -94,6 +94,10 @@ const uint16 LibEventTransport::getRemotePort() {
 }
 
 const void *LibEventTransport::getPostData(int &size) {
+  if (m_sendEnded) {
+    size = 0;
+    return 0;
+  }
   evbuffer *buf = m_request->input_buffer;
 
   ASSERT(buf);
@@ -249,10 +253,21 @@ void LibEventTransport::sendImpl(const void *data, int size, int code,
   ASSERT(!m_sendEnded);
   ASSERT(!m_sendStarted || chunked);
 
+  if (code >= 300 && code <= 399) {
+    data = (void *)"";
+    size = 0;
+  }
+
   if (chunked) {
     ASSERT(m_method != HEAD);
     evbuffer *chunk = evbuffer_new();
     evbuffer_add(chunk, data, size);
+    /*
+     * Chunked replies are sent async, so there is no way to know the
+     * time it took to flush the response, but tracking the bytes sent is
+     * very useful.
+     */
+    onChunkedProgress(size);
     m_server->onChunkedResponse(m_workerId, m_request, code, chunk,
                                !m_sendStarted);
   } else {

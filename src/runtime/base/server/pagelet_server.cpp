@@ -26,7 +26,8 @@
 #include <util/lock.h>
 #include <util/logger.h>
 
-using namespace std;
+using std::set;
+using std::deque;
 
 namespace HPHP {
 ///////////////////////////////////////////////////////////////////////////////
@@ -115,6 +116,12 @@ public:
   virtual void sendImpl(const void *data, int size, int code,
                         bool compressed) {
     ASSERT(!compressed);
+
+    if (code >= 300 && code <= 399) {
+      data = (void *)"";
+      size = 0;
+    }
+
     m_response.append((const char*)data, size);
     if (code) {
       m_code = code;

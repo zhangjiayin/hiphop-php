@@ -19,9 +19,11 @@
 #include <runtime/ext/ext_preg.h>
 #include <runtime/ext/ext_string.h>
 #include <runtime/ext/ext_function.h>
+#include <runtime/ext/ext_class.h>
 #include <util/alloc.h>
 #include <util/logger.h>
 #include <runtime/base/zend/zend_url.h>
+#include <runtime/base/zend/zend_php_config.h>
 #include <runtime/base/base_includes.h>
 #include <runtime/base/zend/zend_string.h>
 #include <runtime/base/zend/zend_printf.h>

@@ -66,8 +66,6 @@ class c_DateTime : public ExtObjectData {
   DECLARE_METHOD_INVOKE_HELPERS(settime);
   public: Object t_settimezone(CObjRef timezone);
   DECLARE_METHOD_INVOKE_HELPERS(settimezone);
-  public: Variant t___destruct();
-  DECLARE_METHOD_INVOKE_HELPERS(__destruct);
 
   // implemented by HPHP
   public: c_DateTime *create(String time = "now",
@@ -141,8 +139,6 @@ class c_DateTimeZone : public ExtObjectData {
     return ti_listidentifiers("datetimezone");
   }
   DECLARE_METHOD_INVOKE_HELPERS(listidentifiers);
-  public: Variant t___destruct();
-  DECLARE_METHOD_INVOKE_HELPERS(__destruct);
 
   // implemented by HPHP
   public: c_DateTimeZone *create(String timezone);
@@ -188,7 +184,7 @@ inline Variant f_microtime(bool get_as_float = false) {
   return TimeStamp::CurrentMicroTime();
 }
 
-inline int f_time() {
+inline int64 f_time() {
   return time(0);
 }
 
@@ -323,7 +319,7 @@ inline String f_timezone_name_get(CObjRef object) {
   return object.getTyped<c_DateTimeZone>()->t_getname();
 }
 
-inline int f_timezone_offset_get(CObjRef object, CObjRef dt) {
+inline int64 f_timezone_offset_get(CObjRef object, CObjRef dt) {
   return object.getTyped<c_DateTimeZone>()->t_getoffset(dt);
 }
 
@@ -363,7 +359,7 @@ inline void f_date_modify(CObjRef object, CStrRef modify) {
   object.getTyped<c_DateTime>()->t_modify(modify);
 }
 
-inline int f_date_offset_get(CObjRef object) {
+inline int64 f_date_offset_get(CObjRef object) {
   return object.getTyped<c_DateTime>()->t_getoffset();
 }
 

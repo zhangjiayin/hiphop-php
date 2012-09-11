@@ -48,10 +48,12 @@ class c_SQLite3 : public ExtObjectData {
   // need to implement
   public: c_SQLite3(const ObjectStaticCallbacks *cb = &cw_SQLite3);
   public: ~c_SQLite3();
-  public: void t___construct();
+  public: void t___construct(CStrRef filename, int64 flags = k_SQLITE3_OPEN_READWRITE|k_SQLITE3_OPEN_CREATE, CStrRef encryption_key = null_string);
   DECLARE_METHOD_INVOKE_HELPERS(__construct);
   public: void t_open(CStrRef filename, int64 flags = k_SQLITE3_OPEN_READWRITE|k_SQLITE3_OPEN_CREATE, CStrRef encryption_key = null_string);
   DECLARE_METHOD_INVOKE_HELPERS(open);
+  public: bool t_busytimeout(int64 msecs);
+  DECLARE_METHOD_INVOKE_HELPERS(busytimeout);
   public: bool t_close();
   DECLARE_METHOD_INVOKE_HELPERS(close);
   public: bool t_exec(CStrRef sql);
@@ -82,12 +84,9 @@ class c_SQLite3 : public ExtObjectData {
   DECLARE_METHOD_INVOKE_HELPERS(createaggregate);
   public: bool t_openblob(CStrRef table, CStrRef column, int64 rowid, CStrRef dbname = null_string);
   DECLARE_METHOD_INVOKE_HELPERS(openblob);
-  public: Variant t___destruct();
-  DECLARE_METHOD_INVOKE_HELPERS(__destruct);
 
   // implemented by HPHP
-  public: c_SQLite3 *create();
-
+  public: c_SQLite3 *create(String filename, int64 flags = k_SQLITE3_OPEN_READWRITE|k_SQLITE3_OPEN_CREATE, String encryption_key = null_string);
 
   public: void validate() const;
   public: sqlite3 *m_raw_db;
@@ -128,8 +127,6 @@ class c_SQLite3Stmt : public ExtObjectData {
   DECLARE_METHOD_INVOKE_HELPERS(bindvalue);
   public: Variant t_execute();
   DECLARE_METHOD_INVOKE_HELPERS(execute);
-  public: Variant t___destruct();
-  DECLARE_METHOD_INVOKE_HELPERS(__destruct);
 
   // implemented by HPHP
   public: c_SQLite3Stmt *create(Object dbobject, String statement);
@@ -172,8 +169,6 @@ class c_SQLite3Result : public ExtObjectData {
   DECLARE_METHOD_INVOKE_HELPERS(reset);
   public: bool t_finalize();
   DECLARE_METHOD_INVOKE_HELPERS(finalize);
-  public: Variant t___destruct();
-  DECLARE_METHOD_INVOKE_HELPERS(__destruct);
 
   // implemented by HPHP
   public: c_SQLite3Result *create();
