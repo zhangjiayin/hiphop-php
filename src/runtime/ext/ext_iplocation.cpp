@@ -56,29 +56,32 @@ namespace HPHP {
 
     class IpLocMap {
     public:
-        static std::map<IpLocKey,String> lMap;
+        static std::map<IpLocKey,std::string> lMap;
 
         static std::string ipDataPath;
 
-        static String find(int64 ip) {
+        static int inited;
+
+        static std::string find(int64 ip) {
             //use find method to prevent write  4 thread safety
             //do not use [] 4 thread safety
             //TODO more safefy
-            std::map<IpLocKey,String>::iterator IpLocIter = IpLocMap::lMap.find(IpLocKey (ip, ip));
+            std::map<IpLocKey,std::string>::iterator IpLocIter = IpLocMap::lMap.find(IpLocKey (ip, ip));
             if(IpLocIter != IpLocMap::lMap.end()){
                 return IpLocIter->second;
             }
-            return null_string;
+            return std::string("");
         }
 
-        static std::map<IpLocKey,String> createLMap (){
-            std::map<IpLocKey,String> ret;
-            return ret;
-        }
+        static void shutdown() {
+		lMap.clear();
+	}
 
         static void init() {
             IniSetting::Bind("location.data_file_path", "/home/admin/opt/ipdata.txt.gbk", ini_on_update_string, &ipDataPath);
             Logger::Info("load ip data " + ipDataPath);
+	    if(inited == 1)return ;
+	    inited = 1;
             char buffer[1024];
             std::fstream out;
             out.open(ipDataPath.c_str(),std::ios::in);
@@ -96,10 +99,10 @@ namespace HPHP {
                 int64 end=0L;
                 int index=0;
 
-                String loc;
-                String  city;
-                String  province;
-                String  country;
+                std::string loc("");
+//                std::string  city ="";
+//                std::string  province ="";
+//                std::string  country ="";
 
                 while(p!=NULL) {
                     if(index == 0) {
@@ -107,20 +110,25 @@ namespace HPHP {
                     } else if(index == 1) {
                         end=atol(p);
                     } else if(index == 5){
-                        province = String(p);
+ //                       province = std::string(p);
+			loc.append(p);
                     } else if(index == 6){
-                        city=  String(p);
+			//city= std::string(p);
+			loc.append(" ");
+			loc.append(p);
                     } else if(index == 7){
-                        country= String(p);
+                    	//country= std::string(p);
+			loc.append(" ");
+			loc.append(p);
                     }
                     p = strtok(NULL,split);
                     index++;
                 }
-                loc += province;
-                loc += " ";
-                loc += city;
-                loc += " ";
-                loc += country;
+ //               loc = province;
+ //               loc += " ";
+//                loc += city;
+//                loc += " ";
+//                loc += country;
                 IpLocKey k(start, end);
                 lMap[k] = loc;
                 //cout<<buffer<<endl;
@@ -129,27 +137,30 @@ namespace HPHP {
         }
     };
 
-    std::map<IpLocKey,String> IpLocMap::lMap;
+    std::map<IpLocKey,std::string> IpLocMap::lMap;
+    int IpLocMap::inited = 0;
     std::string IpLocMap::ipDataPath;
     ///////////////////////////////////////////////////////////////////////////////
     String f_ip_get_location(CStrRef ip) {
+	//return "";
         Variant ipint = f_ip2long(ip);
         if(same(ipint, false)) {
             raise_warning(ip + " is not a validate ip");
             return String("");
         }
-        String ret = IpLocMap::find(ipint.toInt64());
-        if(ret == null_string) {
-            return String("");
-        }
-        return ret;
+        std::string ret = IpLocMap::find(ipint.toInt64());
+        return String(ret.data());
     }
+
     static class iplocationExtension : public Extension {
     public:
         iplocationExtension() : Extension("iplocation") {}
         virtual void moduleInit() {
             IpLocMap::init();
         }
+	virtual void moduleShutdown(){
+	   IpLocMap::shutdown();
+	}
     } s_iplocation_extension;
     ///////////////////////////////////////////////////////////////////////////////
 
